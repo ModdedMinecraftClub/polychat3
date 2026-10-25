@@ -1,13 +1,27 @@
 package club.moddedminecraft.polychat3.server;
 
+import java.io.IOException;
+import java.nio.file.Paths;
+
 import club.moddedminecraft.polychat3.core.config.ConfigLoader;
+import club.moddedminecraft.polychat3.server.config.Config;
 
 public class Server {
-    public String getGreeting() {
-        return "Hello World!";
-    }
+
+    private static Config config;
 
     public static void main(String[] args) {
-        System.out.println(new Server().getGreeting());
+        try {
+            config = loadConfig();
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+            //can't run without config
+            System.exit(1);
+        }
+    }
+
+    public static Config loadConfig() throws IOException {
+        return ConfigLoader.load(Paths.get("config/polychat-server.jsonc"), Config.class, "/defaults/polychat-server.jsonc");
     }
 }
