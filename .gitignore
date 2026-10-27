@@ -9,3 +9,12 @@ build
 
 # Ignore debug runtime dir
 run
+
+# Ignore Eclipse / Java language server project files
+.project
+.classpath
+.settings
+bin
+
+# Ignore the config :server:run writes, it holds the token
+server/config

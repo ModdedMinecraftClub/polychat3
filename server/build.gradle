@@ -9,6 +9,7 @@ plugins {
     // Apply the application plugin to add support for building a CLI application in Java.
     id 'application'
     id 'java'
+    id 'com.gradleup.shadow' version '9.3.1'
 }
 
 repositories {
@@ -17,7 +18,8 @@ repositories {
 }
 
 dependencies {
-    implementation project(':core')
+    // core's plain jar is disabled; use its shaded jar
+    implementation project(path: ':core', configuration: 'shadowRuntimeElements')
 }
 
 // Apply a specific Java toolchain to ease working on different environments.
@@ -29,5 +31,20 @@ java {
 
 application {
     // Define the main class for the application.
-    mainClass = 'club.moddedminecraft.polychat.server.PolychatServer'
+    mainClass = 'club.moddedminecraft.polychat3.server.Server'
+}
+
+// The release is the single shadow jar, with core inside
+tasks.named('jar') {
+    enabled = false
+}
+
+tasks.named('shadowJar') {
+    archiveBaseName = 'polychat3-server'
+    archiveClassifier = ''
+}
+
+// Only the jar is released, so skip the application plugin's zip and tar bundles
+tasks.matching { it.name in ['distZip', 'distTar', 'shadowDistZip', 'shadowDistTar'] }.configureEach {
+    enabled = false
 }

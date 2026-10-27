@@ -1,21 +1,6 @@
-buildscript {
-    repositories {
-        // These repositories are only for Gradle plugins, put any other repositories in the repository block further below
-        mavenCentral()
-        gradlePluginPortal()
-    }
-    dependencies {
-    }
-}
-
-
 plugins {
     id 'java'
     id 'com.gradleup.shadow' version '9.3.1'
-}
-
-configurations {
-    shade
 }
 
 repositories {
@@ -25,7 +10,13 @@ repositories {
 
 dependencies {
     implementation 'com.google.code.gson:gson:2.15.0'
-    shade 'com.google.code.gson:gson:2.15.0'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.13.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
 }
 
 tasks.named('jar') {
@@ -34,7 +25,6 @@ tasks.named('jar') {
 
 
 tasks.named('shadowJar') {
-    configurations = [project.configurations.shade]
     relocate 'com.google',
             'club.moddedminecraft.polychat3.internal.google'
     archiveBaseName = 'polychat3-core'
