@@ -1,7 +1,7 @@
 package club.moddedminecraft.polychat3.core.payloads;
 
 /**
- * One frame on the wire. {@code PayloadCodec} writes {@link #type()} as the frame's {@code type} field.
+ * One frame on the wire. {@link PayloadCodec} writes {@link #type()} as the frame's {@code type} field.
  */
 public abstract class Payload {
     /**
