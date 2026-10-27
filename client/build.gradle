@@ -1,0 +1,63 @@
+buildscript {
+    repositories {
+        // These repositories are only for Gradle plugins, put any other repositories in the repository block further below
+        mavenCentral()
+        gradlePluginPortal()
+        //Heather's maven for access to Go!Agnostic
+        maven {
+            url = 'https://maven.heather.computer/public-snapshot'
+        }
+    }
+    dependencies {
+        //Depend on Go!Agnostic here
+        classpath 'computer.heather.goagnostic:api:BLEEDINGEDGE-SNAPSHOT'
+    }
+}
+
+
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow' version '9.3.1'
+}
+
+//Apply Go!Agnostic's gradle plugin
+apply plugin: 'computer.heather.goagnostic'
+
+repositories {
+    // Use Maven Central for resolving dependencies.
+    mavenCentral()
+    //Heather's maven for access to Go!Agnostic
+    maven {
+        url = 'https://maven.heather.computer/public-snapshot'
+    }
+}
+
+dependencies {
+    // core's plain jar is disabled; use its shaded jar
+    implementation project(path: ':core', configuration: 'shadowRuntimeElements')
+    //Go!Agnostic
+    annotationProcessor 'computer.heather.goagnostic:api:BLEEDINGEDGE-SNAPSHOT'
+    implementation 'computer.heather.goagnostic:api:BLEEDINGEDGE-SNAPSHOT'
+}
+
+// Apply a specific Java toolchain to ease working on different environments.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(8)
+    }
+}   
+
+// The release is the single shadow jar, with core inside
+tasks.named('jar') {
+    enabled = false
+}
+
+tasks.named('shadowJar') {
+    archiveBaseName = 'polychat3-server'
+    archiveClassifier = ''
+}
+
+// Only the jar is released, so skip the application plugin's zip and tar bundles
+tasks.matching { it.name in ['distZip', 'distTar', 'shadowDistZip', 'shadowDistTar'] }.configureEach {
+    enabled = false
+}
