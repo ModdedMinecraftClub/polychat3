@@ -6,7 +6,6 @@ public class Config {
     //These match the exact names in the jsonc config
     private String server_token;
     private int server_port;
-    private int buffer_size;
 
 
     public String getToken() {
@@ -14,9 +13,6 @@ public class Config {
     }
     public int getPort() {
         return server_port;
-    }
-    public int getBuffer() {
-        return buffer_size;
     }
 
 

@@ -2,7 +2,5 @@
     //The token clients must use to connect to the polychat server
     "server_token" : "",
     //The port the polychat server listens on
-    "server_port" : 5005,
-    //The buffer size for each websocket connection
-    "buffer_size" : 4096
+    "server_port" : 5005
 }
