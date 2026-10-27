@@ -1,5 +1,5 @@
 {
-    //The token clients must use to connect to the polychat server
+    //The token every game server uses to connect to the polychat server; must be set
     "server_token" : "",
     //The port the polychat server listens on
     "server_port" : 5005

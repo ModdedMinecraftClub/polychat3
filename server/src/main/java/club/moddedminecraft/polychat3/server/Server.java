@@ -13,10 +13,10 @@ public class Server {
     public static void main(String[] args) {
         try {
             config = loadConfig();
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+            config.validate();
+        } catch (IOException | IllegalArgumentException e) {
             //can't run without config
+            System.err.println("Can't load config: " + e.getMessage());
             System.exit(1);
         }
     }
