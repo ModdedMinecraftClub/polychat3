@@ -9,6 +9,7 @@ import java.nio.file.Path;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonParseException;
 import com.google.gson.Strictness;
 
 public final class ConfigLoader {
@@ -24,8 +25,15 @@ public final class ConfigLoader {
                 Files.copy(in, file);
             }
         }
+        T config;
         try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            return GSON.fromJson(r, type);
+            config = GSON.fromJson(r, type);
+        } catch (JsonParseException e) {
+            throw new IOException(file + " is not valid JSON: " + e.getMessage(), e);
         }
+        if (config == null) {
+            throw new IOException(file + " is empty");
+        }
+        return config;
     }
 }
