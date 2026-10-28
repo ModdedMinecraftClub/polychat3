@@ -19,6 +19,17 @@ public class Server {
             System.err.println("Can't load config: " + e.getMessage());
             System.exit(1);
         }
+
+        Hub hub = new Hub(config.getPort(), config.getToken());
+        // Closes every connection with 1001, so game servers know to reconnect
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                hub.stop(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }));
+        hub.start();
     }
 
     public static Config loadConfig() throws IOException {
