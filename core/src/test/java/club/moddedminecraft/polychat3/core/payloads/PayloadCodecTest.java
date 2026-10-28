@@ -13,7 +13,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerList;
+import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerListC2S;
 
 class PayloadCodecTest {
     /** Every example frame in PROTOCOL.md decodes, and encodes back to the same text. */
@@ -60,7 +60,7 @@ class PayloadCodecTest {
 
     @Test
     void rejectsNestedFieldMissingInHubFrame() {
-        String frame = "{\"type\":\"handshakeAccepted\",\"version\":1,\"lastSeq\":0,\"servers\":[{\"id\":\"g\","
+        String frame = "{\"type\":\"handshakeAccepted\",\"version\":1,\"session\":1,\"lastSeq\":0,\"servers\":[{\"id\":\"g\","
                 + "\"name\":\"G\",\"colour\":\"gold\",\"address\":\"a\",\"state\":\"started\",\"players\":[]}]}";
         assertThrows(ProtocolException.class, () -> PayloadCodec.S2C.decode(frame));
     }
@@ -69,6 +69,6 @@ class PayloadCodecTest {
     void encodeRejectsNullFields() {
         assertThrows(IllegalArgumentException.class, () -> PayloadCodec.encode(new ProtocolError(null, "m")));
         assertThrows(IllegalArgumentException.class, () -> PayloadCodec.encode(
-                new PlayerList(1, Collections.singletonList(new PlayerInfo("a", null)))));
+                new PlayerListC2S(1, Collections.singletonList(new PlayerInfo("a", null)))));
     }
 }

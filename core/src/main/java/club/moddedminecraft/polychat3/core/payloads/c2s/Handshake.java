@@ -19,9 +19,11 @@ public final class Handshake extends Payload {
     private final String colour;
     private final String address;
     private final int maxPlayers;
+    private final long hubSession;
+    private final long lastRelayed;
 
     public Handshake(int version, String server, String name, String token, long session, ServerState state,
-            String colour, String address, int maxPlayers) {
+            String colour, String address, int maxPlayers, long hubSession, long lastRelayed) {
         this.version = version;
         this.server = server;
         this.name = name;
@@ -31,6 +33,8 @@ public final class Handshake extends Payload {
         this.colour = colour;
         this.address = address;
         this.maxPlayers = maxPlayers;
+        this.hubSession = hubSession;
+        this.lastRelayed = lastRelayed;
     }
 
     @Override
@@ -100,5 +104,21 @@ public final class Handshake extends Payload {
      */
     public int getMaxPlayers() {
         return maxPlayers;
+    }
+
+    /**
+     * @return the hub {@code session} from this process's last {@code handshakeAccepted}, 0 on its first
+     * connection. The hub only replays if it still has that session.
+     */
+    public long getHubSession() {
+        return hubSession;
+    }
+
+    /**
+     * @return highest relayed {@code seq} received since that {@code handshakeAccepted}, 0 if none. The hub
+     * replays what it kept above it.
+     */
+    public long getLastRelayed() {
+        return lastRelayed;
     }
 }

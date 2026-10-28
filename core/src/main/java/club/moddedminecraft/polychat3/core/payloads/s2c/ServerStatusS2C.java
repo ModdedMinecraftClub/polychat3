@@ -8,7 +8,7 @@ import club.moddedminecraft.polychat3.core.payloads.ServerState;
 /**
  * Another server's state changed. Carries that server's whole roster entry.
  */
-public final class ServerStatus extends Relayed {
+public final class ServerStatusS2C extends Relayed {
     public static final String TYPE = "serverStatus";
 
     private final ServerState state;
@@ -17,9 +17,9 @@ public final class ServerStatus extends Relayed {
     private final int maxPlayers;
     private final List<PlayerInfo> players;
 
-    public ServerStatus(String server, String serverName, ServerState state, String colour, String address,
+    public ServerStatusS2C(String server, String serverName, long seq, ServerState state, String colour, String address,
             int maxPlayers, List<PlayerInfo> players) {
-        super(server, serverName);
+        super(server, serverName, seq);
         this.state = state;
         this.colour = colour;
         this.address = address;

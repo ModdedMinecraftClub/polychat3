@@ -1,17 +1,17 @@
-package club.moddedminecraft.polychat3.core.payloads.c2s;
+package club.moddedminecraft.polychat3.core.payloads.s2c;
 
 /**
- * A player left this server.
+ * A player joined another server.
  */
-public final class PlayerLeave extends Event {
-    public static final String TYPE = "playerLeave";
+public final class PlayerJoinS2C extends Relayed {
+    public static final String TYPE = "playerJoin";
 
     private final String player;
     private final String uuid;
     private final int online;
 
-    public PlayerLeave(long seq, String player, String uuid, int online) {
-        super(seq);
+    public PlayerJoinS2C(String server, String serverName, long seq, String player, String uuid, int online) {
+        super(server, serverName, seq);
         this.player = player;
         this.uuid = uuid;
         this.online = online;
@@ -37,7 +37,7 @@ public final class PlayerLeave extends Event {
     }
 
     /**
-     * @return number of players online after the player left.
+     * @return number of players online there after the player joined.
      */
     public int getOnline() {
         return online;

@@ -5,12 +5,12 @@ import club.moddedminecraft.polychat3.core.payloads.ServerState;
 /**
  * This server's lifecycle state changed.
  */
-public final class ServerStatus extends Event {
+public final class ServerStatusC2S extends Event {
     public static final String TYPE = "serverStatus";
 
     private final ServerState state;
 
-    public ServerStatus(long seq, ServerState state) {
+    public ServerStatusC2S(long seq, ServerState state) {
         super(seq);
         this.state = state;
     }

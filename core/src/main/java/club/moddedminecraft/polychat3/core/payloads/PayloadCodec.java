@@ -10,17 +10,25 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.Strictness;
 
-import club.moddedminecraft.polychat3.core.payloads.c2s.ChatMessage;
+import club.moddedminecraft.polychat3.core.payloads.c2s.ChatMessageC2S;
 import club.moddedminecraft.polychat3.core.payloads.c2s.CommandResult;
 import club.moddedminecraft.polychat3.core.payloads.c2s.Handshake;
 import club.moddedminecraft.polychat3.core.payloads.c2s.Heartbeat;
-import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerJoin;
-import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerLeave;
-import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerList;
-import club.moddedminecraft.polychat3.core.payloads.c2s.ServerStatus;
+import club.moddedminecraft.polychat3.core.payloads.c2s.MuteC2S;
+import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerJoinC2S;
+import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerLeaveC2S;
+import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerListC2S;
+import club.moddedminecraft.polychat3.core.payloads.c2s.ServerStatusC2S;
 import club.moddedminecraft.polychat3.core.payloads.s2c.Acknowledgement;
+import club.moddedminecraft.polychat3.core.payloads.s2c.ChatMessageS2C;
 import club.moddedminecraft.polychat3.core.payloads.s2c.HandshakeAccepted;
+import club.moddedminecraft.polychat3.core.payloads.s2c.MuteList;
+import club.moddedminecraft.polychat3.core.payloads.s2c.MuteS2C;
+import club.moddedminecraft.polychat3.core.payloads.s2c.PlayerJoinS2C;
+import club.moddedminecraft.polychat3.core.payloads.s2c.PlayerLeaveS2C;
+import club.moddedminecraft.polychat3.core.payloads.s2c.PlayerListS2C;
 import club.moddedminecraft.polychat3.core.payloads.s2c.RunCommand;
+import club.moddedminecraft.polychat3.core.payloads.s2c.ServerStatusS2C;
 import club.moddedminecraft.polychat3.core.payloads.s2c.SystemMessage;
 
 /**
@@ -40,30 +48,28 @@ public final class PayloadCodec {
     public static final PayloadCodec C2S = new PayloadCodec()
             .register(Handshake.TYPE, Handshake.class)
             .register(Heartbeat.TYPE, Heartbeat.class)
-            .register(ChatMessage.TYPE, ChatMessage.class)
-            .register(PlayerJoin.TYPE, PlayerJoin.class)
-            .register(PlayerLeave.TYPE, PlayerLeave.class)
-            .register(PlayerList.TYPE, PlayerList.class)
-            .register(ServerStatus.TYPE, ServerStatus.class)
+            .register(ChatMessageC2S.TYPE, ChatMessageC2S.class)
+            .register(PlayerJoinC2S.TYPE, PlayerJoinC2S.class)
+            .register(PlayerLeaveC2S.TYPE, PlayerLeaveC2S.class)
+            .register(PlayerListC2S.TYPE, PlayerListC2S.class)
+            .register(ServerStatusC2S.TYPE, ServerStatusC2S.class)
             .register(CommandResult.TYPE, CommandResult.class)
+            .register(MuteC2S.TYPE, MuteC2S.class)
             .register(ProtocolError.TYPE, ProtocolError.class);
 
     /** Decodes what the hub sends. Used by the client. */
     public static final PayloadCodec S2C = new PayloadCodec()
             .register(HandshakeAccepted.TYPE, HandshakeAccepted.class)
             .register(Acknowledgement.TYPE, Acknowledgement.class)
-            .register(club.moddedminecraft.polychat3.core.payloads.s2c.ChatMessage.TYPE,
-                    club.moddedminecraft.polychat3.core.payloads.s2c.ChatMessage.class)
-            .register(club.moddedminecraft.polychat3.core.payloads.s2c.PlayerJoin.TYPE,
-                    club.moddedminecraft.polychat3.core.payloads.s2c.PlayerJoin.class)
-            .register(club.moddedminecraft.polychat3.core.payloads.s2c.PlayerLeave.TYPE,
-                    club.moddedminecraft.polychat3.core.payloads.s2c.PlayerLeave.class)
-            .register(club.moddedminecraft.polychat3.core.payloads.s2c.PlayerList.TYPE,
-                    club.moddedminecraft.polychat3.core.payloads.s2c.PlayerList.class)
-            .register(club.moddedminecraft.polychat3.core.payloads.s2c.ServerStatus.TYPE,
-                    club.moddedminecraft.polychat3.core.payloads.s2c.ServerStatus.class)
+            .register(ChatMessageS2C.TYPE, ChatMessageS2C.class)
+            .register(PlayerJoinS2C.TYPE, PlayerJoinS2C.class)
+            .register(PlayerLeaveS2C.TYPE, PlayerLeaveS2C.class)
+            .register(PlayerListS2C.TYPE, PlayerListS2C.class)
+            .register(ServerStatusS2C.TYPE, ServerStatusS2C.class)
             .register(RunCommand.TYPE, RunCommand.class)
             .register(SystemMessage.TYPE, SystemMessage.class)
+            .register(MuteList.TYPE, MuteList.class)
+            .register(MuteS2C.TYPE, MuteS2C.class)
             .register(ProtocolError.TYPE, ProtocolError.class);
 
     private final Map<String, Class<? extends Payload>> types = new HashMap<>();

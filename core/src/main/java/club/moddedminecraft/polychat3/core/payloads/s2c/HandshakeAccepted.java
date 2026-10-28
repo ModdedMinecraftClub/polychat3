@@ -11,11 +11,13 @@ public final class HandshakeAccepted extends Payload {
     public static final String TYPE = "handshakeAccepted";
 
     private final int version;
+    private final long session;
     private final long lastSeq;
     private final List<ServerEntry> servers;
 
-    public HandshakeAccepted(int version, long lastSeq, List<ServerEntry> servers) {
+    public HandshakeAccepted(int version, long session, long lastSeq, List<ServerEntry> servers) {
         this.version = version;
+        this.session = session;
         this.lastSeq = lastSeq;
         this.servers = servers;
     }
@@ -30,6 +32,14 @@ public final class HandshakeAccepted extends Payload {
      */
     public int getVersion() {
         return version;
+    }
+
+    /**
+     * @return the hub's process start time in ms. The client sends it back as {@code hubSession} when it
+     * reconnects, so a restarted hub doesn't replay against a stale {@code lastRelayed}.
+     */
+    public long getSession() {
+        return session;
     }
 
     /**

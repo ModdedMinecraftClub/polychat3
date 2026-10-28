@@ -1,19 +1,20 @@
-package club.moddedminecraft.polychat3.core.payloads.s2c;
+package club.moddedminecraft.polychat3.core.payloads.c2s;
 
 import java.util.List;
 
 import club.moddedminecraft.polychat3.core.payloads.PlayerInfo;
 
 /**
- * The full list of players on another server.
+ * The full list of players on this server. Sent after every {@code handshakeAccepted},
+ * and every 5 minutes.
  */
-public final class PlayerList extends Relayed {
+public final class PlayerListC2S extends Event {
     public static final String TYPE = "playerList";
 
     private final List<PlayerInfo> players;
 
-    public PlayerList(String server, String serverName, List<PlayerInfo> players) {
-        super(server, serverName);
+    public PlayerListC2S(long seq, List<PlayerInfo> players) {
+        super(seq);
         this.players = players;
     }
 
@@ -23,7 +24,7 @@ public final class PlayerList extends Relayed {
     }
 
     /**
-     * @return every player online there.
+     * @return every player online.
      */
     public List<PlayerInfo> getPlayers() {
         return players;

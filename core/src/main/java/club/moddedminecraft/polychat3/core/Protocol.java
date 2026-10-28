@@ -1,5 +1,7 @@
 package club.moddedminecraft.polychat3.core;
 
+import java.util.regex.Pattern;
+
 /**
  * Constants both ends must agree on. See PROTOCOL.md.
  */
@@ -8,6 +10,8 @@ public final class Protocol {
     public static final int VERSION = 1;
     /** Largest encoded frame either side accepts, in bytes. */
     public static final int MAX_FRAME_BYTES = 65536;
+    /** A valid server id: 1 to 16 lowercase letters, digits, {@code _} or {@code -}. */
+    public static final Pattern SERVER_ID = Pattern.compile("[a-z0-9_-]{1,16}");
 
     /** Client shutting down, after sending {@code serverStatus} {@code stopped} or {@code crashed}. */
     public static final int CLOSE_NORMAL = 1000;

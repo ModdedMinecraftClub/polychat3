@@ -16,7 +16,8 @@ both ends must use the same version.
 - One text frame is one UTF-8 JSON object with a string `type`. No batching, no
   binary frames.
 - Field names are camelCase, the same as the Java fields. `type` is the class
-  name in camelCase: `PlayerJoin` is `playerJoin`.
+  name in camelCase, without a `C2S` or `S2C` suffix: `PlayerJoinC2S` is
+  `playerJoin`.
 - `Protocol.MAX_FRAME_BYTES` (65 536) is the largest encoded frame, in both
   directions. Both ends pass it to Java-WebSocket's `Draft_6455`, which closes a
   connection that receives a bigger frame with 1009. The library only checks
@@ -48,14 +49,14 @@ Everything below is in `core`, package `club.moddedminecraft.polychat3.core`.
 
 | Class | Purpose |
 |---|---|
-| `Protocol` | `VERSION`, `MAX_FRAME_BYTES` and the close codes |
+| `Protocol` | `VERSION`, `MAX_FRAME_BYTES`, `SERVER_ID` and the close codes |
 | `payloads.PayloadCodec` | Encodes and decodes frames |
 | `payloads.Payload` | Base class of every frame |
 | `payloads.ProtocolError` | The `protocolError` frame, used in both directions |
 | `payloads.PlayerInfo`, `payloads.ServerState` | Shared by both directions |
 | `payloads.ProtocolException` | Thrown for an invalid frame |
-| `payloads.c2s.*` | Frames the client sends; events extend `c2s.Event` (adds `seq`) |
-| `payloads.s2c.*` | Frames the hub sends; relayed frames extend `s2c.Relayed` (adds `server`, `serverName`) |
+| `payloads.c2s.*` | Frames the client sends; events extend `c2s.Event` (adds `seq`). A name both directions use ends in `C2S` |
+| `payloads.s2c.*` | Frames the hub sends; relayed frames extend `s2c.Relayed` (adds `server`, `serverName`). A name both directions use ends in `S2C` |
 
 Every payload class and getter has Javadoc.
 
@@ -77,8 +78,8 @@ would break the protocol.
 
 ## Field types
 
-`seq`, `lastSeq` and `session` are 64-bit integers. `version`, `online` and
-`maxPlayers` are integers. `ok` and `truncated` are booleans. `uuid` is a dashed
+`seq`, `lastSeq`, `session`, `hubSession` and `lastRelayed` are 64-bit integers. `version`, `online` and
+`maxPlayers` are integers. `ok`, `truncated` and `muted` are booleans (`muted` is an array in `muteList`). `uuid` is a dashed
 Minecraft UUID. Everything else is a string or an array.
 
 `state` is one of `starting`, `started`, `stopping`, `stopped`, `crashed`,
@@ -88,7 +89,7 @@ Minecraft UUID. Everything else is a string or an array.
 
 | Type | Fields |
 |---|---|
-| `handshake` | `version`, `server`, `name`, `token`, `session`, `state`, `colour`, `address`, `maxPlayers` |
+| `handshake` | `version`, `server`, `name`, `token`, `session`, `state`, `colour`, `address`, `maxPlayers`, `hubSession`, `lastRelayed` |
 | `heartbeat` | none |
 | `chatMessage` | `seq`, `player`, `senderId`, `message` |
 | `playerJoin` | `seq`, `player`, `uuid`, `online` |
@@ -96,6 +97,7 @@ Minecraft UUID. Everything else is a string or an array.
 | `playerList` | `seq`, `players` (array of `{name, uuid}`) |
 | `serverStatus` | `seq`, `state` |
 | `commandResult` | `seq`, `id`, `ok`, `output`, `truncated` |
+| `mute` | `seq`, `target`, `muted`, `by` |
 | `protocolError` | `code`, `message` |
 
 - `handshake`:
@@ -105,6 +107,9 @@ Minecraft UUID. Everything else is a string or an array.
   - `state` is `starting` or `started`.
   - `colour` is one of the 16 Minecraft colour names.
   - `address` and `maxPlayers` are shown by `/online`.
+  - `hubSession` and `lastRelayed` ask the hub to replay what this server
+    missed; see "Replay to the client". Both are `0` on the first connection
+    of a session.
 - `heartbeat`: sent from the game's server tick every 15 s. No `seq`, never
   buffered or replayed.
 - `chatMessage`: `senderId` is the player's Minecraft UUID.
@@ -112,29 +117,36 @@ Minecraft UUID. Everything else is a string or an array.
 - `playerList`: the full list, sent after every `handshakeAccepted` and every
   5 minutes.
 - `commandResult`: `id` is the `id` of the `runCommand` it answers.
+- `mute`: a staff member on this server muted (`muted: true`) or unmuted the
+  player with Minecraft UUID `target`. `by` is the staff member's UUID. See
+  "Mutes".
 
 ## Messages, hub to client (`s2c`)
 
 | Type | Fields |
 |---|---|
-| `handshakeAccepted` | `version`, `lastSeq`, `servers` (array of `ServerEntry`) |
+| `handshakeAccepted` | `version`, `session`, `lastSeq`, `servers` (array of `ServerEntry`) |
 | `acknowledgement` | `seq` |
-| `chatMessage` | `server`, `serverName`, `player`, `senderId`, `message` |
-| `playerJoin` | `server`, `serverName`, `player`, `uuid`, `online` |
-| `playerLeave` | `server`, `serverName`, `player`, `uuid`, `online` |
-| `playerList` | `server`, `serverName`, `players` |
-| `serverStatus` | `server`, `serverName`, `state`, `colour`, `address`, `maxPlayers`, `players` |
+| `chatMessage` | `server`, `serverName`, `seq`, `player`, `senderId`, `message` |
+| `playerJoin` | `server`, `serverName`, `seq`, `player`, `uuid`, `online` |
+| `playerLeave` | `server`, `serverName`, `seq`, `player`, `uuid`, `online` |
+| `playerList` | `server`, `serverName`, `seq`, `players` |
+| `serverStatus` | `server`, `serverName`, `seq`, `state`, `colour`, `address`, `maxPlayers`, `players` |
 | `runCommand` | `id`, `name`, `default`, `args` |
 | `systemMessage` | `message`, `kind` |
+| `muteList` | `muted` (array of UUIDs) |
+| `mute` | `target`, `muted`, `by` |
 | `protocolError` | `code`, `message` |
 
-- `handshakeAccepted`: `lastSeq` is the highest `seq` accepted from this server
-  and session, `0` if none. A `ServerEntry` has `id`, `name`, `colour`,
+- `handshakeAccepted`: `session` is the hub's process start time in ms.
+  `lastSeq` is the highest `seq` accepted from this server and session, `0` if
+  none. A `ServerEntry` has `id`, `name`, `colour`,
   `address`, `maxPlayers`, `state` and `players`.
 - `acknowledgement`: every event up to and including `seq` is accepted.
 - `chatMessage`, `playerJoin`, `playerLeave`, `playerList`, `serverStatus`:
   relayed from another server or a module, with `server` and `serverName` naming
-  where it came from.
+  where it came from. `seq` is the hub's relay number; see "Replay to the
+  client".
   - `chatMessage.senderId` is a Minecraft UUID for game chat, and the Discord user
     id for Discord chat.
   - `serverStatus` is the origin's `ServerEntry` flattened onto the frame.
@@ -144,6 +156,23 @@ Minecraft UUID. Everything else is a string or an array.
   with `commandResult`.
 - `systemMessage`: `kind` is `broadcast`, `restart` or `info`. The hub only sends
   it to the servers it is meant for.
+- `muteList`: every muted player's Minecraft UUID, sent right after
+  `handshakeAccepted`. It replaces the client's copy of the list.
+- `mute`: one player was muted or unmuted, sent to every server. `by` is a
+  Minecraft UUID for an in-game mute, or the Discord user id for a Discord one.
+  Not relayed with `seq` and never replayed: the next `muteList` carries it.
+
+## Mutes
+
+- The hub owns the mute list, keyed by Minecraft UUID, and keeps it across
+  restarts. Staff change it in game (c2s `mute`) or through a hub module such
+  as Discord.
+- On every change the hub sends `mute` to every connected server, including the
+  one the change came from.
+- The client keeps its copy from `muteList` and `mute`, and stops a muted
+  player's chat on its own server.
+- The hub also drops a `chatMessage` whose `senderId` is muted, in case a
+  client's copy is behind. It acknowledges it, logs it and does not relay it.
 
 ## Errors
 
@@ -166,7 +195,8 @@ client's log says why.
    2. the token matches the hub's `server_token`, which every server shares (4001);
    3. the version equals `Protocol.VERSION` (4002).
 4. If a live connection already has that id, the hub closes the old one with 4004.
-5. The hub answers `handshakeAccepted`.
+5. The hub answers `handshakeAccepted`, then replays what the client missed;
+   see "Replay to the client".
 6. The client resends its buffered events with `seq` above `lastSeq`, oldest
    first, then sends a fresh `playerList`.
 
@@ -181,19 +211,38 @@ including a new type, bumps it by one in the next release.
 ## Sequence numbers, acknowledgements and replay
 
 - Events are `chatMessage`, `playerJoin`, `playerLeave`, `playerList`,
-  `serverStatus` and `commandResult`. Each carries `seq`: 1 for the first event a
+  `serverStatus`, `commandResult` and `mute`. Each carries `seq`: 1 for the first event a
   client process sends, plus one for every event after it.
 - `seq` belongs to the session. After a restart the client has a new `session`
   and starts again at 1, and the hub starts counting again from 0.
 - The hub sends `acknowledgement` after it has processed an event. One
   `acknowledgement` may cover several events.
-- The client buffers every `chatMessage`, `playerJoin`, `playerLeave` and
-  `serverStatus` until an `acknowledgement` covers it, up to 200 events, dropping
+- The client buffers every `chatMessage`, `playerJoin`, `playerLeave`,
+  `serverStatus` and `mute` until an `acknowledgement` covers it, up to 200 events, dropping
   the oldest when full. `playerList` and `commandResult` are not buffered.
 - An event with `seq` at or below the hub's last accepted `seq` for that session
   is a duplicate. The hub acknowledges it again and does not process it.
-- Delivery is at-least-once. Hub to client has no `seq`: a disconnected client
-  misses what was said meanwhile.
+- Delivery is at-least-once.
+
+## Replay to the client
+
+- The hub numbers every relayed event with one `seq` for the whole hub: 1 for
+  the first event it relays after it starts, plus one for every event after
+  that. An event has the same `seq` on every server it goes to, so a client
+  sees gaps, which are normal.
+- The hub keeps the last 200 relayed `chatMessage`, `playerJoin` and
+  `playerLeave` frames. `playerList` and `serverStatus` are not kept, since
+  `handshakeAccepted.servers` already carries the current state.
+- The client keeps, in memory, the hub `session` from its last
+  `handshakeAccepted` and the highest relayed `seq` it has received since.
+- When it reconnects in the same session, the client sends them as `hubSession`
+  and `lastRelayed`. If `hubSession` equals the hub's `session`, the hub sends
+  every kept frame with `seq` above `lastRelayed` that came from another server,
+  oldest first, right after `handshakeAccepted`.
+- On the first connection of a session, after a restart, the client sends `0`
+  for both and gets no replay: no players were online to miss anything. A hub
+  that restarted has a new `session`, so it replays nothing either.
+- Frames older than the last 200 are lost.
 
 ## Shutting down
 
@@ -239,18 +288,22 @@ Backoff is 1, 2, 4, 8, 16, then 30 s, with 20 % jitter.
 `>` is client to hub, `<` is hub to client.
 
 ```
-> {"type":"handshake","version":1,"server":"a5","name":"All the Mods 5","token":"...","session":1793130000000,"state":"started","colour":"yellow","address":"a5.example.net","maxPlayers":40}
-< {"type":"handshakeAccepted","version":1,"lastSeq":0,"servers":[{"id":"gtnh","name":"GTNH","colour":"gold","address":"gtnh.example.net","maxPlayers":30,"state":"started","players":[{"name":"Steve","uuid":"069a79f4-..."}]}]}
+> {"type":"handshake","version":1,"server":"a5","name":"All the Mods 5","token":"...","session":1793130000000,"state":"started","colour":"yellow","address":"a5.example.net","maxPlayers":40,"hubSession":0,"lastRelayed":0}
+< {"type":"handshakeAccepted","version":1,"session":1793120000000,"lastSeq":0,"servers":[{"id":"gtnh","name":"GTNH","colour":"gold","address":"gtnh.example.net","maxPlayers":30,"state":"started","players":[{"name":"Steve","uuid":"069a79f4-..."}]}]}
+< {"type":"muteList","muted":["1f2a3b4c-..."]}
 > {"type":"playerList","players":[{"name":"Alex","uuid":"ec561538-..."}],"seq":1}
 < {"type":"acknowledgement","seq":1}
 > {"type":"chatMessage","player":"Alex","senderId":"ec561538-...","message":"hello!","seq":2}
 < {"type":"acknowledgement","seq":2}
+> {"type":"mute","target":"ec561538-...","muted":true,"by":"069a79f4-...","seq":3}
+< {"type":"mute","target":"ec561538-...","muted":true,"by":"069a79f4-..."}
+< {"type":"acknowledgement","seq":3}
 > {"type":"heartbeat"}
-> {"type":"serverStatus","state":"stopping","seq":3}
+> {"type":"serverStatus","state":"stopping","seq":4}
 < {"type":"runCommand","id":"c-7","name":"tps","default":"forge tps","args":[]}
-> {"type":"commandResult","id":"c-7","ok":true,"output":"Overall: Mean TPS: 20.0","truncated":false,"seq":4}
+> {"type":"commandResult","id":"c-7","ok":true,"output":"Overall: Mean TPS: 20.0","truncated":false,"seq":5}
 < {"type":"systemMessage","message":"Server restarting in 60 s","kind":"restart"}
-< {"type":"chatMessage","player":"Alex","senderId":"ec561538-...","message":"hello!","server":"a5","serverName":"All the Mods 5"}
-< {"type":"chatMessage","player":"Heather","senderId":"123456789012345678","message":"hi from Discord","server":"discord","serverName":"Discord"}
+< {"type":"chatMessage","player":"Alex","senderId":"ec561538-...","message":"hello!","server":"a5","serverName":"All the Mods 5","seq":41}
+< {"type":"chatMessage","player":"Heather","senderId":"123456789012345678","message":"hi from Discord","server":"discord","serverName":"Discord","seq":42}
 < {"type":"protocolError","code":"unknown_type","message":"unknown type pong"}
 ```

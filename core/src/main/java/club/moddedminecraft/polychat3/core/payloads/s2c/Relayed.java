@@ -8,10 +8,12 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
 public abstract class Relayed extends Payload {
     private final String server;
     private final String serverName;
+    private final long seq;
 
-    protected Relayed(String server, String serverName) {
+    protected Relayed(String server, String serverName, long seq) {
         this.server = server;
         this.serverName = serverName;
+        this.seq = seq;
     }
 
     /**
@@ -26,5 +28,13 @@ public abstract class Relayed extends Payload {
      */
     public String getServerName() {
         return serverName;
+    }
+
+    /**
+     * @return the hub's relay number, one per event for the whole hub. The client sends the highest it has
+     * received as {@code lastRelayed} when it reconnects.
+     */
+    public long getSeq() {
+        return seq;
     }
 }
