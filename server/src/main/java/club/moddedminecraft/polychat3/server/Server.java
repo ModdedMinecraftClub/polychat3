@@ -5,6 +5,8 @@ import java.nio.file.Paths;
 
 import club.moddedminecraft.polychat3.core.config.ConfigLoader;
 import club.moddedminecraft.polychat3.server.config.Config;
+import club.moddedminecraft.polychat3.server.hub.Hub;
+import club.moddedminecraft.polychat3.server.net.WebSocketEndpoint;
 
 public class Server {
 
@@ -20,16 +22,17 @@ public class Server {
             System.exit(1);
         }
 
-        Hub hub = new Hub(config.getPort(), config.getToken());
+        Hub hub = new Hub(config.getToken());
+        WebSocketEndpoint endpoint = new WebSocketEndpoint(config.getPort(), hub);
         // Closes every connection with 1001, so game servers know to reconnect
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
-                hub.stop(1000);
+                endpoint.stop(1000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }));
-        hub.start();
+        endpoint.start();
     }
 
     public static Config loadConfig() throws IOException {
