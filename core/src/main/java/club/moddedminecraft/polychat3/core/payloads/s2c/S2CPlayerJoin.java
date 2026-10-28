@@ -1,17 +1,17 @@
-package club.moddedminecraft.polychat3.core.payloads.c2s;
+package club.moddedminecraft.polychat3.core.payloads.s2c;
 
 /**
- * A player joined this server.
+ * A player joined another server.
  */
-public final class PlayerJoinC2S extends Event {
+public final class S2CPlayerJoin extends S2CRelayed {
     public static final String TYPE = "playerJoin";
 
     private final String player;
     private final String uuid;
     private final int online;
 
-    public PlayerJoinC2S(long seq, String player, String uuid, int online) {
-        super(seq);
+    public S2CPlayerJoin(String server, String serverName, long seq, String player, String uuid, int online) {
+        super(server, serverName, seq);
         this.player = player;
         this.uuid = uuid;
         this.online = online;
@@ -37,7 +37,7 @@ public final class PlayerJoinC2S extends Event {
     }
 
     /**
-     * @return number of players online after the player joined.
+     * @return number of players online there after the player joined.
      */
     public int getOnline() {
         return online;

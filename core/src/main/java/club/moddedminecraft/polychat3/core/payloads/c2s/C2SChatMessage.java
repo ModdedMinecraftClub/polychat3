@@ -1,17 +1,17 @@
-package club.moddedminecraft.polychat3.core.payloads.s2c;
+package club.moddedminecraft.polychat3.core.payloads.c2s;
 
 /**
- * A chat line from another server, or from Discord.
+ * A chat line typed by a player on this server.
  */
-public final class ChatMessageS2C extends Relayed {
+public final class C2SChatMessage extends C2SEvent {
     public static final String TYPE = "chatMessage";
 
     private final String player;
     private final String senderId;
     private final String message;
 
-    public ChatMessageS2C(String server, String serverName, long seq, String player, String senderId, String message) {
-        super(server, serverName, seq);
+    public C2SChatMessage(long seq, String player, String senderId, String message) {
+        super(seq);
         this.player = player;
         this.senderId = senderId;
         this.message = message;
@@ -23,14 +23,14 @@ public final class ChatMessageS2C extends Relayed {
     }
 
     /**
-     * @return name of whoever sent it.
+     * @return player name.
      */
     public String getPlayer() {
         return player;
     }
 
     /**
-     * @return minecraft UUID for game chat, Discord user id for Discord chat.
+     * @return the player's Minecraft UUID, dashed.
      */
     public String getSenderId() {
         return senderId;

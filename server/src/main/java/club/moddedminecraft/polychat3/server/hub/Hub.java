@@ -17,9 +17,9 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
 import club.moddedminecraft.polychat3.core.payloads.PayloadCodec;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolError;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolException;
-import club.moddedminecraft.polychat3.core.payloads.c2s.Handshake;
-import club.moddedminecraft.polychat3.core.payloads.s2c.HandshakeAccepted;
-import club.moddedminecraft.polychat3.core.payloads.s2c.MuteList;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
 import club.moddedminecraft.polychat3.server.net.Connection;
 
 /**
@@ -87,7 +87,7 @@ public final class Hub {
     public void closed(Connection connection, int code) {
         thread.execute(logged(() -> {
             connection.setState(Connection.State.CLOSING);
-            Handshake handshake = connection.getHandshake();
+            C2SHandshake handshake = connection.getHandshake();
             if (handshake != null && servers.remove(handshake.getServer(), connection)) {
                 LOG.info("{} disconnected with {}", handshake.getServer(), code);
             }
@@ -144,13 +144,13 @@ public final class Hub {
             refuse(connection, Protocol.CLOSE_BAD_HANDSHAKE, "bad_handshake", e.getMessage());
             return;
         }
-        if (!(payload instanceof Handshake)) {
+        if (!(payload instanceof C2SHandshake)) {
             refuse(connection, Protocol.CLOSE_BAD_HANDSHAKE, "bad_handshake",
                     "expected handshake, got " + payload.type());
             return;
         }
 
-        Handshake handshake = (Handshake) payload;
+        C2SHandshake handshake = (C2SHandshake) payload;
         String id = handshake.getServer();
         if (!Protocol.SERVER_ID.matcher(id).matches()) {
             refuse(connection, Protocol.CLOSE_BAD_SERVER_ID, "bad_server_id", "invalid server id " + id);
@@ -173,9 +173,9 @@ public final class Hub {
             refuse(old, Protocol.CLOSE_REPLACED, "replaced", "replaced by a newer connection for " + id);
         }
         // The hub doesn't track events or other servers yet, so there is nothing to resume, list or replay
-        connection.send(new HandshakeAccepted(Protocol.VERSION, session, 0, Collections.emptyList()));
+        connection.send(new S2CHandshakeAccepted(Protocol.VERSION, session, 0, Collections.emptyList()));
         // No mute list is kept yet either
-        connection.send(new MuteList(Collections.emptyList()));
+        connection.send(new S2CMuteList(Collections.emptyList()));
         LOG.info("{} ({}) connected from {}", id, handshake.getName(), connection.remoteAddress());
     }
 }

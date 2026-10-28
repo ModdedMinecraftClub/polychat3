@@ -16,7 +16,7 @@ both ends must use the same version.
 - One text frame is one UTF-8 JSON object with a string `type`. No batching, no
   binary frames.
 - Field names are camelCase, the same as the Java fields. `type` is the class
-  name in camelCase, without a `C2S` or `S2C` suffix: `PlayerJoinC2S` is
+  name in camelCase, without its `C2S` or `S2C` prefix: `C2SPlayerJoin` is
   `playerJoin`.
 - `Protocol.MAX_FRAME_BYTES` (65 536) is the largest encoded frame, in both
   directions. Both ends pass it to Java-WebSocket's `Draft_6455`, which closes a
@@ -55,8 +55,8 @@ Everything below is in `core`, package `club.moddedminecraft.polychat3.core`.
 | `payloads.ProtocolError` | The `protocolError` frame, used in both directions |
 | `payloads.PlayerInfo`, `payloads.ServerState` | Shared by both directions |
 | `payloads.ProtocolException` | Thrown for an invalid frame |
-| `payloads.c2s.*` | Frames the client sends; events extend `c2s.Event` (adds `seq`). A name both directions use ends in `C2S` |
-| `payloads.s2c.*` | Frames the hub sends; relayed frames extend `s2c.Relayed` (adds `server`, `serverName`). A name both directions use ends in `S2C` |
+| `payloads.c2s.*` | Frames the client sends; events extend `c2s.C2SEvent` (adds `seq`). Every class name starts with `C2S` |
+| `payloads.s2c.*` | Frames the hub sends; relayed frames extend `s2c.S2CRelayed` (adds `server`, `serverName`). Every class name starts with `S2C` |
 
 Every payload class and getter has Javadoc.
 
@@ -125,7 +125,7 @@ Minecraft UUID. Everything else is a string or an array.
 
 | Type | Fields |
 |---|---|
-| `handshakeAccepted` | `version`, `session`, `lastSeq`, `servers` (array of `ServerEntry`) |
+| `handshakeAccepted` | `version`, `session`, `lastSeq`, `servers` (array of `S2CServerEntry`) |
 | `acknowledgement` | `seq` |
 | `chatMessage` | `server`, `serverName`, `seq`, `player`, `senderId`, `message` |
 | `playerJoin` | `server`, `serverName`, `seq`, `player`, `uuid`, `online` |
@@ -140,7 +140,7 @@ Minecraft UUID. Everything else is a string or an array.
 
 - `handshakeAccepted`: `session` is the hub's process start time in ms.
   `lastSeq` is the highest `seq` accepted from this server and session, `0` if
-  none. A `ServerEntry` has `id`, `name`, `colour`,
+  none. An `S2CServerEntry` has `id`, `name`, `colour`,
   `address`, `maxPlayers`, `state` and `players`.
 - `acknowledgement`: every event up to and including `seq` is accepted.
 - `chatMessage`, `playerJoin`, `playerLeave`, `playerList`, `serverStatus`:
@@ -149,7 +149,7 @@ Minecraft UUID. Everything else is a string or an array.
   client".
   - `chatMessage.senderId` is a Minecraft UUID for game chat, and the Discord user
     id for Discord chat.
-  - `serverStatus` is the origin's `ServerEntry` flattened onto the frame.
+  - `serverStatus` is the origin's `S2CServerEntry` flattened onto the frame.
 - `runCommand`: the client joins `args` with single spaces and substitutes the
   result for `$args` once, in its own override for `name` if it has one, else in
   `default` (`defaultCommand` in Java). It runs that console command and answers

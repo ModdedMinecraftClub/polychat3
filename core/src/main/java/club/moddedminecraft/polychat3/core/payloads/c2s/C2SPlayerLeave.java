@@ -3,14 +3,14 @@ package club.moddedminecraft.polychat3.core.payloads.c2s;
 /**
  * A player left this server.
  */
-public final class PlayerLeaveC2S extends Event {
+public final class C2SPlayerLeave extends C2SEvent {
     public static final String TYPE = "playerLeave";
 
     private final String player;
     private final String uuid;
     private final int online;
 
-    public PlayerLeaveC2S(long seq, String player, String uuid, int online) {
+    public C2SPlayerLeave(long seq, String player, String uuid, int online) {
         super(seq);
         this.player = player;
         this.uuid = uuid;

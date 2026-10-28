@@ -6,14 +6,14 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
  * A player was muted or unmuted, from Discord or another server. The client updates its copy of the
  * mute list.
  */
-public final class MuteS2C extends Payload {
+public final class S2CMute extends Payload {
     public static final String TYPE = "mute";
 
     private final String target;
     private final boolean muted;
     private final String by;
 
-    public MuteS2C(String target, boolean muted, String by) {
+    public S2CMute(String target, boolean muted, String by) {
         this.target = target;
         this.muted = muted;
         this.by = by;

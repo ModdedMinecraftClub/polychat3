@@ -5,10 +5,10 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
 /**
  * A client frame that carries {@code seq} and is acknowledged by the hub.
  */
-public abstract class Event extends Payload {
+public abstract class C2SEvent extends Payload {
     private final long seq;
 
-    protected Event(long seq) {
+    protected C2SEvent(long seq) {
         this.seq = seq;
     }
 

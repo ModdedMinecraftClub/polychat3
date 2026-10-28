@@ -5,12 +5,12 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
 /**
  * An event the hub forwards from one server, or from a module such as Discord, to the others.
  */
-public abstract class Relayed extends Payload {
+public abstract class S2CRelayed extends Payload {
     private final String server;
     private final String serverName;
     private final long seq;
 
-    protected Relayed(String server, String serverName, long seq) {
+    protected S2CRelayed(String server, String serverName, long seq) {
         this.server = server;
         this.serverName = serverName;
         this.seq = seq;

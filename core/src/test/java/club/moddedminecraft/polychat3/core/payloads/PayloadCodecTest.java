@@ -13,7 +13,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerListC2S;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerList;
 
 class PayloadCodecTest {
     /** Every example frame in PROTOCOL.md decodes, and encodes back to the same text. */
@@ -69,6 +69,6 @@ class PayloadCodecTest {
     void encodeRejectsNullFields() {
         assertThrows(IllegalArgumentException.class, () -> PayloadCodec.encode(new ProtocolError(null, "m")));
         assertThrows(IllegalArgumentException.class, () -> PayloadCodec.encode(
-                new PlayerListC2S(1, Collections.singletonList(new PlayerInfo("a", null)))));
+                new C2SPlayerList(1, Collections.singletonList(new PlayerInfo("a", null)))));
     }
 }

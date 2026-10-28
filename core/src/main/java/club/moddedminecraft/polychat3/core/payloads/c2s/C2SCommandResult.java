@@ -3,7 +3,7 @@ package club.moddedminecraft.polychat3.core.payloads.c2s;
 /**
  * The output of a console command the hub asked for with {@code runCommand}.
  */
-public final class CommandResult extends Event {
+public final class C2SCommandResult extends C2SEvent {
     public static final String TYPE = "commandResult";
 
     private final String id;
@@ -11,7 +11,7 @@ public final class CommandResult extends Event {
     private final String output;
     private final boolean truncated;
 
-    public CommandResult(long seq, String id, boolean ok, String output, boolean truncated) {
+    public C2SCommandResult(long seq, String id, boolean ok, String output, boolean truncated) {
         super(seq);
         this.id = id;
         this.ok = ok;

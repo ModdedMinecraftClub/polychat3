@@ -12,7 +12,7 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
  * <p>The client joins {@code args} with single spaces and substitutes the result for {@code $args}
  * once, in its own override for {@code name} if it has one, else in {@code defaultCommand}.
  */
-public final class RunCommand extends Payload {
+public final class S2CRunCommand extends Payload {
     public static final String TYPE = "runCommand";
 
     private final String id;
@@ -21,7 +21,7 @@ public final class RunCommand extends Payload {
     private final String defaultCommand;
     private final List<String> args;
 
-    public RunCommand(String id, String name, String defaultCommand, List<String> args) {
+    public S2CRunCommand(String id, String name, String defaultCommand, List<String> args) {
         this.id = id;
         this.name = name;
         this.defaultCommand = defaultCommand;

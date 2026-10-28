@@ -7,7 +7,7 @@ import club.moddedminecraft.polychat3.core.payloads.ServerState;
  * The first frame a client sends. The hub answers {@code handshakeAccepted} or closes
  * the connection.
  */
-public final class Handshake extends Payload {
+public final class C2SHandshake extends Payload {
     public static final String TYPE = "handshake";
 
     private final int version;
@@ -22,7 +22,7 @@ public final class Handshake extends Payload {
     private final long hubSession;
     private final long lastRelayed;
 
-    public Handshake(int version, String server, String name, String token, long session, ServerState state,
+    public C2SHandshake(int version, String server, String name, String token, long session, ServerState state,
             String colour, String address, int maxPlayers, long hubSession, long lastRelayed) {
         this.version = version;
         this.server = server;

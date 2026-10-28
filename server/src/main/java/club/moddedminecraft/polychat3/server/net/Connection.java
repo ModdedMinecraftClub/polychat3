@@ -5,7 +5,7 @@ import org.java_websocket.exceptions.WebsocketNotConnectedException;
 
 import club.moddedminecraft.polychat3.core.payloads.Payload;
 import club.moddedminecraft.polychat3.core.payloads.PayloadCodec;
-import club.moddedminecraft.polychat3.core.payloads.c2s.Handshake;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
 
 /** One client's socket and what the hub knows about it. */
 public final class Connection {
@@ -23,7 +23,7 @@ public final class Connection {
     private final WebSocket websocket;
     private State state = State.AWAITING_HANDSHAKE;
     /** Null until the handshake is accepted. Volatile because socket threads read it for logs. */
-    private volatile Handshake handshake;
+    private volatile C2SHandshake handshake;
     /** Invalid frames in a row; reset by a valid one. */
     private int invalidFrames;
 
@@ -52,7 +52,7 @@ public final class Connection {
 
     /** @return the server id once the handshake is accepted, otherwise the remote address. For logs. */
     public String describe() {
-        Handshake accepted = this.handshake;
+        C2SHandshake accepted = this.handshake;
         if (accepted != null) {
             return accepted.getServer();
         }
@@ -75,12 +75,12 @@ public final class Connection {
     }
 
     /** @return the accepted handshake, or null before it is accepted. */
-    public Handshake getHandshake() {
+    public C2SHandshake getHandshake() {
         return handshake;
     }
 
     /** Stores the handshake once the hub accepts it. */
-    public void setHandshake(Handshake handshake) {
+    public void setHandshake(C2SHandshake handshake) {
         this.handshake = handshake;
     }
 

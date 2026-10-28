@@ -7,7 +7,7 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
 /**
  * A message from the hub to show in game, such as a broadcast or restart warning.
  */
-public final class SystemMessage extends Payload {
+public final class S2CSystemMessage extends Payload {
     public static final String TYPE = "systemMessage";
 
     /** What kind of system message it is. */
@@ -20,7 +20,7 @@ public final class SystemMessage extends Payload {
     private final String message;
     private final Kind kind;
 
-    public SystemMessage(String message, Kind kind) {
+    public S2CSystemMessage(String message, Kind kind) {
         this.message = message;
         this.kind = kind;
     }

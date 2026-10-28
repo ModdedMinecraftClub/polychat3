@@ -6,40 +6,37 @@ import club.moddedminecraft.polychat3.core.payloads.PlayerInfo;
 import club.moddedminecraft.polychat3.core.payloads.ServerState;
 
 /**
- * One server in the hub's roster, as sent in {@code handshakeAccepted.servers}.
+ * Another server's state changed. Carries that server's whole roster entry.
  */
-public final class ServerEntry {
-    private final String id;
-    private final String name;
+public final class S2CServerStatus extends S2CRelayed {
+    public static final String TYPE = "serverStatus";
+
+    private final ServerState state;
     private final String colour;
     private final String address;
     private final int maxPlayers;
-    private final ServerState state;
     private final List<PlayerInfo> players;
 
-    public ServerEntry(String id, String name, String colour, String address, int maxPlayers,
-            ServerState state, List<PlayerInfo> players) {
-        this.id = id;
-        this.name = name;
+    public S2CServerStatus(String server, String serverName, long seq, ServerState state, String colour, String address,
+            int maxPlayers, List<PlayerInfo> players) {
+        super(server, serverName, seq);
+        this.state = state;
         this.colour = colour;
         this.address = address;
         this.maxPlayers = maxPlayers;
-        this.state = state;
         this.players = players;
     }
 
-    /**
-     * @return server id.
-     */
-    public String getId() {
-        return id;
+    @Override
+    public String type() {
+        return TYPE;
     }
 
     /**
-     * @return display name.
+     * @return new state, including {@code OFFLINE} and {@code UNRESPONSIVE}.
      */
-    public String getName() {
-        return name;
+    public ServerState getState() {
+        return state;
     }
 
     /**
@@ -64,14 +61,7 @@ public final class ServerEntry {
     }
 
     /**
-     * @return current state, including {@code OFFLINE} and {@code UNRESPONSIVE}.
-     */
-    public ServerState getState() {
-        return state;
-    }
-
-    /**
-     * @return every player online; empty unless the server is running.
+     * @return every player online there; empty unless it is running.
      */
     public List<PlayerInfo> getPlayers() {
         return players;

@@ -8,12 +8,12 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
  * Every muted player, sent right after {@code handshakeAccepted}. Replaces the client's copy of the
  * mute list.
  */
-public final class MuteList extends Payload {
+public final class S2CMuteList extends Payload {
     public static final String TYPE = "muteList";
 
     private final List<String> muted;
 
-    public MuteList(List<String> muted) {
+    public S2CMuteList(List<String> muted) {
         this.muted = muted;
     }
 

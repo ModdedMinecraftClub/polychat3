@@ -5,12 +5,12 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
 /**
  * Confirms the hub accepted the client's events.
  */
-public final class Acknowledgement extends Payload {
+public final class S2CAcknowledgement extends Payload {
     public static final String TYPE = "acknowledgement";
 
     private final long seq;
 
-    public Acknowledgement(long seq) {
+    public S2CAcknowledgement(long seq) {
         this.seq = seq;
     }
 

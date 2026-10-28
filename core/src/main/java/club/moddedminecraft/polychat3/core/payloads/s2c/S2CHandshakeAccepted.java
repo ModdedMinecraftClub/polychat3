@@ -7,15 +7,15 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
 /**
  * The hub's answer to a valid {@code handshake}.
  */
-public final class HandshakeAccepted extends Payload {
+public final class S2CHandshakeAccepted extends Payload {
     public static final String TYPE = "handshakeAccepted";
 
     private final int version;
     private final long session;
     private final long lastSeq;
-    private final List<ServerEntry> servers;
+    private final List<S2CServerEntry> servers;
 
-    public HandshakeAccepted(int version, long session, long lastSeq, List<ServerEntry> servers) {
+    public S2CHandshakeAccepted(int version, long session, long lastSeq, List<S2CServerEntry> servers) {
         this.version = version;
         this.session = session;
         this.lastSeq = lastSeq;
@@ -53,7 +53,7 @@ public final class HandshakeAccepted extends Payload {
     /**
      * @return every server the hub knows, so the client can show who is online elsewhere.
      */
-    public List<ServerEntry> getServers() {
+    public List<S2CServerEntry> getServers() {
         return servers;
     }
 }

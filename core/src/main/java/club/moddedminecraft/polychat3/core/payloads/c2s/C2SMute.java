@@ -3,14 +3,14 @@ package club.moddedminecraft.polychat3.core.payloads.c2s;
 /**
  * A staff member on this server muted or unmuted a player across the network.
  */
-public final class MuteC2S extends Event {
+public final class C2SMute extends C2SEvent {
     public static final String TYPE = "mute";
 
     private final String target;
     private final boolean muted;
     private final String by;
 
-    public MuteC2S(long seq, String target, boolean muted, String by) {
+    public C2SMute(long seq, String target, boolean muted, String by) {
         super(seq);
         this.target = target;
         this.muted = muted;

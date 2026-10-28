@@ -10,26 +10,26 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.Strictness;
 
-import club.moddedminecraft.polychat3.core.payloads.c2s.ChatMessageC2S;
-import club.moddedminecraft.polychat3.core.payloads.c2s.CommandResult;
-import club.moddedminecraft.polychat3.core.payloads.c2s.Handshake;
-import club.moddedminecraft.polychat3.core.payloads.c2s.Heartbeat;
-import club.moddedminecraft.polychat3.core.payloads.c2s.MuteC2S;
-import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerJoinC2S;
-import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerLeaveC2S;
-import club.moddedminecraft.polychat3.core.payloads.c2s.PlayerListC2S;
-import club.moddedminecraft.polychat3.core.payloads.c2s.ServerStatusC2S;
-import club.moddedminecraft.polychat3.core.payloads.s2c.Acknowledgement;
-import club.moddedminecraft.polychat3.core.payloads.s2c.ChatMessageS2C;
-import club.moddedminecraft.polychat3.core.payloads.s2c.HandshakeAccepted;
-import club.moddedminecraft.polychat3.core.payloads.s2c.MuteList;
-import club.moddedminecraft.polychat3.core.payloads.s2c.MuteS2C;
-import club.moddedminecraft.polychat3.core.payloads.s2c.PlayerJoinS2C;
-import club.moddedminecraft.polychat3.core.payloads.s2c.PlayerLeaveS2C;
-import club.moddedminecraft.polychat3.core.payloads.s2c.PlayerListS2C;
-import club.moddedminecraft.polychat3.core.payloads.s2c.RunCommand;
-import club.moddedminecraft.polychat3.core.payloads.s2c.ServerStatusS2C;
-import club.moddedminecraft.polychat3.core.payloads.s2c.SystemMessage;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SChatMessage;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SCommandResult;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHeartbeat;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SMute;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerJoin;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerLeave;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerList;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SServerStatus;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CAcknowledgement;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CChatMessage;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMute;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerJoin;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerLeave;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerList;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CRunCommand;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerStatus;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CSystemMessage;
 
 /**
  * Turns payloads into JSON frames and back, so neither the client nor the hub handles JSON itself.
@@ -46,30 +46,30 @@ public final class PayloadCodec {
 
     /** Decodes what a client sends. Used by the hub. */
     public static final PayloadCodec C2S = new PayloadCodec()
-            .register(Handshake.TYPE, Handshake.class)
-            .register(Heartbeat.TYPE, Heartbeat.class)
-            .register(ChatMessageC2S.TYPE, ChatMessageC2S.class)
-            .register(PlayerJoinC2S.TYPE, PlayerJoinC2S.class)
-            .register(PlayerLeaveC2S.TYPE, PlayerLeaveC2S.class)
-            .register(PlayerListC2S.TYPE, PlayerListC2S.class)
-            .register(ServerStatusC2S.TYPE, ServerStatusC2S.class)
-            .register(CommandResult.TYPE, CommandResult.class)
-            .register(MuteC2S.TYPE, MuteC2S.class)
+            .register(C2SHandshake.TYPE, C2SHandshake.class)
+            .register(C2SHeartbeat.TYPE, C2SHeartbeat.class)
+            .register(C2SChatMessage.TYPE, C2SChatMessage.class)
+            .register(C2SPlayerJoin.TYPE, C2SPlayerJoin.class)
+            .register(C2SPlayerLeave.TYPE, C2SPlayerLeave.class)
+            .register(C2SPlayerList.TYPE, C2SPlayerList.class)
+            .register(C2SServerStatus.TYPE, C2SServerStatus.class)
+            .register(C2SCommandResult.TYPE, C2SCommandResult.class)
+            .register(C2SMute.TYPE, C2SMute.class)
             .register(ProtocolError.TYPE, ProtocolError.class);
 
     /** Decodes what the hub sends. Used by the client. */
     public static final PayloadCodec S2C = new PayloadCodec()
-            .register(HandshakeAccepted.TYPE, HandshakeAccepted.class)
-            .register(Acknowledgement.TYPE, Acknowledgement.class)
-            .register(ChatMessageS2C.TYPE, ChatMessageS2C.class)
-            .register(PlayerJoinS2C.TYPE, PlayerJoinS2C.class)
-            .register(PlayerLeaveS2C.TYPE, PlayerLeaveS2C.class)
-            .register(PlayerListS2C.TYPE, PlayerListS2C.class)
-            .register(ServerStatusS2C.TYPE, ServerStatusS2C.class)
-            .register(RunCommand.TYPE, RunCommand.class)
-            .register(SystemMessage.TYPE, SystemMessage.class)
-            .register(MuteList.TYPE, MuteList.class)
-            .register(MuteS2C.TYPE, MuteS2C.class)
+            .register(S2CHandshakeAccepted.TYPE, S2CHandshakeAccepted.class)
+            .register(S2CAcknowledgement.TYPE, S2CAcknowledgement.class)
+            .register(S2CChatMessage.TYPE, S2CChatMessage.class)
+            .register(S2CPlayerJoin.TYPE, S2CPlayerJoin.class)
+            .register(S2CPlayerLeave.TYPE, S2CPlayerLeave.class)
+            .register(S2CPlayerList.TYPE, S2CPlayerList.class)
+            .register(S2CServerStatus.TYPE, S2CServerStatus.class)
+            .register(S2CRunCommand.TYPE, S2CRunCommand.class)
+            .register(S2CSystemMessage.TYPE, S2CSystemMessage.class)
+            .register(S2CMuteList.TYPE, S2CMuteList.class)
+            .register(S2CMute.TYPE, S2CMute.class)
             .register(ProtocolError.TYPE, ProtocolError.class);
 
     private final Map<String, Class<? extends Payload>> types = new HashMap<>();
