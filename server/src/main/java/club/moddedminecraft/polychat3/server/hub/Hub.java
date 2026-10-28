@@ -17,14 +17,17 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
 import club.moddedminecraft.polychat3.core.payloads.PayloadCodec;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolError;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolException;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SEvent;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CAcknowledgement;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
 import club.moddedminecraft.polychat3.server.net.Connection;
 
 /**
  * The core of the polychat server. Every event from the endpoint runs on one thread here, so the hub's
- * state needs no locks. Accepts or refuses each connection's handshake, as described in PROTOCOL.md.
+ * state needs no locks. Accepts or refuses each connection's handshake and acknowledges its events, as
+ * described in PROTOCOL.md.
  */
 public final class Hub {
     private static final Logger LOG = LoggerFactory.getLogger(Hub.class);
@@ -36,6 +39,8 @@ public final class Hub {
     private final long session = System.currentTimeMillis();
     /** Accepted connections, by server id. */
     private final Map<String, Connection> servers = new HashMap<>();
+    /** The last accepted {@code seq} for each game server, kept across its connections. */
+    private final SequenceTracker sequences = new SequenceTracker();
     /** The hub thread. Everything the hub does runs on it. */
     private final ScheduledExecutorService thread = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread hubThread = new Thread(runnable, "polychat-hub");
@@ -117,10 +122,15 @@ public final class Hub {
         };
     }
 
-    /** A frame after the handshake. Closes the connection after too many invalid frames in a row. */
+    /**
+     * A frame after the handshake. Acknowledges every event, processing it only if it isn't a duplicate, as in
+     * PROTOCOL.md "Sequence numbers, acknowledgements and replay". Closes the connection after too many invalid
+     * frames in a row.
+     */
     private void receive(Connection connection, String frame) {
+        Payload payload;
         try {
-            PayloadCodec.C2S.decode(frame);
+            payload = PayloadCodec.C2S.decode(frame);
         } catch (ProtocolException e) {
             if (connection.invalidFrame() >= MAX_INVALID_FRAMES) {
                 refuse(connection, Protocol.CLOSE_PROTOCOL_ERROR, "protocol_error",
@@ -132,7 +142,16 @@ public final class Hub {
             return;
         }
         connection.validFrame();
-        // The hub doesn't act on events yet
+        if (!(payload instanceof C2SEvent)) {
+            // heartbeat and protocolError aren't events, so no ack
+            return;
+        }
+        C2SEvent event = (C2SEvent) payload;
+        String id = connection.getHandshake().getServer();
+        if (sequences.accept(id, event.getSeq())) {
+            // The hub doesn't relay events yet, so there is nothing to process
+        }
+        connection.send(new S2CAcknowledgement(sequences.last(id)));
     }
 
     /** The first frame. Accepts or refuses the handshake, as in PROTOCOL.md "Handshake". */
@@ -172,8 +191,11 @@ public final class Hub {
         if (old != null) {
             refuse(old, Protocol.CLOSE_REPLACED, "replaced", "replaced by a newer connection for " + id);
         }
-        // The hub doesn't track events or other servers yet, so there is nothing to resume, list or replay
-        connection.send(new S2CHandshakeAccepted(Protocol.VERSION, session, 0, Collections.emptyList()));
+        // lastSeq lets the client resend what the hub missed. The hub doesn't track other servers or relay
+        // yet, so there is nothing to list or replay
+        connection
+                .send(new S2CHandshakeAccepted(Protocol.VERSION, session, sequences.resume(id, handshake.getSession()),
+                        Collections.emptyList()));
         // No mute list is kept yet either
         connection.send(new S2CMuteList(Collections.emptyList()));
         LOG.info("{} ({}) connected from {}", id, handshake.getName(), connection.remoteAddress());
