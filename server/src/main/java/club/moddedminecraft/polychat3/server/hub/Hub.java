@@ -44,6 +44,8 @@ public final class Hub {
     private final SequenceTracker sequences = new SequenceTracker();
     /** Builds the frames to relay to other game servers, numbered with the hub's relay {@code seq}. */
     private final Relay relay = new Relay();
+    /** Each game server's details, state and players, as of its latest handshake and events. */
+    private final Roster roster = new Roster();
     /** The hub thread. Everything the hub does runs on it. */
     private final ScheduledExecutorService thread = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread hubThread = new Thread(runnable, "polychat-hub");
@@ -152,8 +154,8 @@ public final class Hub {
         C2SEvent event = (C2SEvent) payload;
         String id = connection.getHandshake().getServer();
         if (sequences.accept(id, event.getSeq())) {
-            C2SHandshake origin = connection.getHandshake();
-            S2CRelayed relayed = relay.relayed(id, origin.getName(), event);
+            roster.update(id, event);
+            S2CRelayed relayed = relay.relayed(roster.entry(id), event);
             if (relayed != null) {
                 for (Connection other : servers.values()) {
                     if (other != connection && other.getState() == Connection.State.ACTIVE) {
@@ -198,6 +200,7 @@ public final class Hub {
 
         connection.setHandshake(handshake);
         connection.setState(Connection.State.ACTIVE);
+        roster.connected(handshake);
         Connection old = servers.put(id, connection);
         if (old != null) {
             refuse(old, Protocol.CLOSE_REPLACED, "replaced", "replaced by a newer connection for " + id);

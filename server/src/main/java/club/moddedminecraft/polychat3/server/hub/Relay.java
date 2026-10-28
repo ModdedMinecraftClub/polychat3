@@ -5,11 +5,14 @@ import club.moddedminecraft.polychat3.core.payloads.c2s.C2SEvent;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerJoin;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerLeave;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerList;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SServerStatus;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CChatMessage;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerJoin;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerLeave;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerList;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CRelayed;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerEntry;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerStatus;
 
 /**
  * Turns a client's event into the frame the other game servers get, numbered with the hub's relay {@code seq}, as
@@ -20,12 +23,15 @@ final class Relay {
     private long lastRelayed;
 
     /**
-     * @param server the origin's game server id.
-     * @param serverName the origin's display name.
+     * @param origin the roster entry of the server the event came from, already updated with this event. Gives
+     * the relayed frame its {@code server} and {@code serverName}, and {@code serverStatus} everything else.
      * @return the frame to relay, with the next relay {@code seq}, or null if this event type isn't relayed. The
      * {@code seq} only advances when a frame is returned.
      */
-    S2CRelayed relayed(String server, String serverName, C2SEvent event) {
+    S2CRelayed relayed(S2CServerEntry origin, C2SEvent event) {
+        String server = origin.getId();
+        String serverName = origin.getName();
+
         if (event instanceof C2SChatMessage) {
             C2SChatMessage chat = (C2SChatMessage) event;
             return new S2CChatMessage(server, serverName, ++lastRelayed, chat.getPlayer(),
@@ -47,6 +53,11 @@ final class Relay {
         if (event instanceof C2SPlayerList) {
             C2SPlayerList list = (C2SPlayerList) event;
             return new S2CPlayerList(server, serverName, ++lastRelayed, list.getPlayers());
+        }
+
+        if (event instanceof C2SServerStatus) {
+            return new S2CServerStatus(server, serverName, ++lastRelayed, origin.getState(), origin.getColour(),
+                    origin.getAddress(), origin.getMaxPlayers(), origin.getPlayers());
         }
 
         return null;
