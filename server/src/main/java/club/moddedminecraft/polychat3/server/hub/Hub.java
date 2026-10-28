@@ -22,12 +22,13 @@ import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CAcknowledgement;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CRelayed;
 import club.moddedminecraft.polychat3.server.net.Connection;
 
 /**
  * The core of the polychat server. Every event from the endpoint runs on one thread here, so the hub's
- * state needs no locks. Accepts or refuses each connection's handshake and acknowledges its events, as
- * described in PROTOCOL.md.
+ * state needs no locks. Accepts or refuses each connection's handshake, then acknowledges its events and relays
+ * them to the other game servers, as described in PROTOCOL.md.
  */
 public final class Hub {
     private static final Logger LOG = LoggerFactory.getLogger(Hub.class);
@@ -41,6 +42,8 @@ public final class Hub {
     private final Map<String, Connection> servers = new HashMap<>();
     /** The last accepted {@code seq} for each game server, kept across its connections. */
     private final SequenceTracker sequences = new SequenceTracker();
+    /** Builds the frames to relay to other game servers, numbered with the hub's relay {@code seq}. */
+    private final Relay relay = new Relay();
     /** The hub thread. Everything the hub does runs on it. */
     private final ScheduledExecutorService thread = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread hubThread = new Thread(runnable, "polychat-hub");
@@ -123,9 +126,9 @@ public final class Hub {
     }
 
     /**
-     * A frame after the handshake. Acknowledges every event, processing it only if it isn't a duplicate, as in
-     * PROTOCOL.md "Sequence numbers, acknowledgements and replay". Closes the connection after too many invalid
-     * frames in a row.
+     * A frame after the handshake. Acknowledges every event, as in PROTOCOL.md "Sequence numbers,
+     * acknowledgements and replay". An event that isn't a duplicate is first relayed to every other game server.
+     * Closes the connection after too many invalid frames in a row.
      */
     private void receive(Connection connection, String frame) {
         Payload payload;
@@ -149,7 +152,15 @@ public final class Hub {
         C2SEvent event = (C2SEvent) payload;
         String id = connection.getHandshake().getServer();
         if (sequences.accept(id, event.getSeq())) {
-            // The hub doesn't relay events yet, so there is nothing to process
+            C2SHandshake origin = connection.getHandshake();
+            S2CRelayed relayed = relay.relayed(id, origin.getName(), event);
+            if (relayed != null) {
+                for (Connection other : servers.values()) {
+                    if (other != connection && other.getState() == Connection.State.ACTIVE) {
+                        other.send(relayed);
+                    }
+                }
+            }
         }
         connection.send(new S2CAcknowledgement(sequences.last(id)));
     }
@@ -191,8 +202,8 @@ public final class Hub {
         if (old != null) {
             refuse(old, Protocol.CLOSE_REPLACED, "replaced", "replaced by a newer connection for " + id);
         }
-        // lastSeq lets the client resend what the hub missed. The hub doesn't track other servers or relay
-        // yet, so there is nothing to list or replay
+        // lastSeq lets the client resend what the hub missed. The hub doesn't track other servers or keep
+        // relayed frames yet, so there is nothing to list or replay
         connection
                 .send(new S2CHandshakeAccepted(Protocol.VERSION, session, sequences.resume(id, handshake.getSession()),
                         Collections.emptyList()));
