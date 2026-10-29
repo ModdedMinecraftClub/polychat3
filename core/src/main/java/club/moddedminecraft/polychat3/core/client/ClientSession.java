@@ -2,6 +2,7 @@ package club.moddedminecraft.polychat3.core.client;
 
 import java.util.ArrayDeque;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -18,6 +19,7 @@ import club.moddedminecraft.polychat3.core.payloads.c2s.C2SChatMessage;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SCommandResult;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SEvent;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHeartbeat;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SMute;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerJoin;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerLeave;
@@ -81,6 +83,14 @@ public final class ClientSession {
     private final Backoff backoff = new Backoff();
     // PROTOCOL.md "Close codes": a wrong token or version is retried this often, not backed off
     private static final long RETRY_MILLIS = 60_000;
+
+    // PROTOCOL.md "Shutting down": how long stop waits for the hub to acknowledge the last serverStatus
+    private static final long STOP_TIMEOUT_SECONDS = 3;
+    // Set by stop: the seq to wait for, and the latch the waiting thread is blocked on
+    private long stopSeq;
+    private CountDownLatch stopAcked;
+    // True after stop; no more reconnects
+    private boolean stopped;
 
     /**
      * @param server this game server's id.
@@ -260,6 +270,45 @@ public final class ClientSession {
     }
 
     /**
+     * Tells the hub the game thread is running. The mod calls it every 15 s from a game-thread timer, as in PROTOCOL.md
+     * "Keepalive". Sent only while connected; never numbered or buffered.
+     */
+    public void heartbeat() {
+        thread.execute(() -> {
+            if (accepted) {
+                transport.send(PayloadCodec.encode(new C2SHeartbeat()));
+            }
+        });
+    }
+
+    /**
+     * Shuts down as in PROTOCOL.md "Shutting down": sends {@code serverStatus}, blocks until the hub acknowledges it
+     * or 3 s pass, then closes with 1000 and never reconnects. For the mod's shutdown hook. Never call it on the
+     * session's thread, such as from a listener callback: it would wait on itself and always time out.
+     *
+     * @param state {@code stopped} or {@code crashed}.
+     */
+    public void stop(ServerState state) {
+        CountDownLatch acked = new CountDownLatch(1);
+        thread.execute(() -> {
+            this.state = state;
+            send(new C2SServerStatus(++seq, state));
+            stopSeq = seq;
+            stopAcked = acked;
+        });
+        try {
+            acked.await(STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            // Keep the interrupt for the caller; close anyway
+            Thread.currentThread().interrupt();
+        }
+        thread.execute(() -> {
+            stopped = true;
+            transport.close(Protocol.CLOSE_NORMAL);
+        });
+    }
+
+    /**
      * Buffers the event unless the spec says not to ({@code playerList}, {@code commandResult}), and sends it if this
      * connection was accepted. Otherwise it waits in the buffer for the resend after the next
      * {@code handshakeAccepted}.
@@ -281,11 +330,19 @@ public final class ClientSession {
         while(!(unacked.isEmpty()) && unacked.peekFirst().getSeq() <= upTo){
             unacked.removeFirst();
         }
+        // stop is waiting for this ack
+        if (stopAcked != null && upTo >= stopSeq) {
+            stopAcked.countDown();
+        }
     }
 
-    /** Opens a new connection after the delay, on the session's thread. */
+    /** Opens a new connection after the delay, on the session's thread, unless the session stopped by then. */
     private void reconnectIn(long millis) {
-        thread.schedule(transport::connect, millis, TimeUnit.MILLISECONDS);
+        thread.schedule(() -> {
+            if (!stopped) {
+                transport.connect();
+            }
+        }, millis, TimeUnit.MILLISECONDS);
     }
 
     /** Remembers the frame's relay seq for the next handshake, then hands it to the listener. */

@@ -1,6 +1,7 @@
 package club.moddedminecraft.polychat3.core.client;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -387,6 +388,51 @@ class ClientSessionTest {
             long base = seconds.get(i) * 1000;
             assertTrue(millis.get(i) >= base * 8 / 10 && millis.get(i) <= base * 12 / 10, "delays " + millis);
         }
+    }
+
+    @Test
+    void heartbeatOnlyWhileAccepted() throws Exception {
+        session.onOpen();
+        session.heartbeat();
+        accept();
+        session.heartbeat();
+        sync();
+        List<String> types = new ArrayList<>();
+        for (String frame : transport.sent) {
+            types.add(PayloadCodec.C2S.decode(frame).type());
+        }
+        assertEquals(Arrays.asList("handshake", "handshake", "playerList", "heartbeat"), types);
+    }
+
+    /** stop returns as soon as the hub acknowledges the stopped status, then closes with 1000. */
+    @Test
+    void stopWaitsForTheAck() throws Exception {
+        accept();
+        Thread stopping = new Thread(() -> session.stop(ServerState.STOPPED));
+        stopping.start();
+        // playerList took seq 1, so stopped is 2
+        for (int i = 0; i < 100 && !eventsSent().contains("serverStatus 2"); i++) {
+            Thread.sleep(10);
+        }
+        assertTrue(stopping.isAlive(), "stop returned before the ack");
+        hub(new S2CAcknowledgement(2));
+        stopping.join(1000);
+        assertFalse(stopping.isAlive(), "stop didn't return after the ack");
+        sync();
+        assertEquals(Collections.singletonList(Protocol.CLOSE_NORMAL), transport.closes);
+    }
+
+    /** With no hub to answer, stop gives up after 3 s, closes, and nothing reconnects afterwards. */
+    @Test
+    void stopGivesUpAfterThreeSecondsAndNeverReconnects() throws Exception {
+        long start = System.nanoTime();
+        session.stop(ServerState.CRASHED);
+        long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        assertTrue(millis >= 2900 && millis < 5000, "stop took " + millis + " ms");
+        session.onClose(1006, "");
+        sync();
+        assertEquals(Collections.singletonList(Protocol.CLOSE_NORMAL), transport.closes);
+        assertEquals(0, transport.connects);
     }
 
     /** Opens the connection and accepts it, as a hub with nothing to resend or list would. */
