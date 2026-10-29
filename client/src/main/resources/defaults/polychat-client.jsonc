@@ -7,7 +7,7 @@
     "serverId" : "ID",
     //The colour that will be used ingame to separate this server from other servers
     //See https://github.com/HeatherComputer/Go-Agnostic/blob/01b81aeb456073bbe1e87269a36f2184b2d14633/api/src/main/java/computer/heather/goagnostic/api/util/chat/ChatSymbols.java#L22 for colours
-    "colour" : 0,
+    "colour" : "WHITE",
 
     //The address of the central Polychat3 server/hub 
     "serverAddress" : "localhost",
