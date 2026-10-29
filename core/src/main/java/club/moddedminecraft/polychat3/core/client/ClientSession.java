@@ -1,14 +1,27 @@
 package club.moddedminecraft.polychat3.core.client;
 
+import java.util.ArrayDeque;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Supplier;
 
 import club.moddedminecraft.polychat3.core.Protocol;
 import club.moddedminecraft.polychat3.core.payloads.Payload;
 import club.moddedminecraft.polychat3.core.payloads.PayloadCodec;
+import club.moddedminecraft.polychat3.core.payloads.PlayerInfo;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolException;
 import club.moddedminecraft.polychat3.core.payloads.ServerState;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SChatMessage;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SCommandResult;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SEvent;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SMute;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerJoin;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerLeave;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerList;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SServerStatus;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CAcknowledgement;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
 
 /**
@@ -27,6 +40,8 @@ public final class ClientSession {
 
     private final Transport transport;
     private final MessageListener listener;
+    // Asked for this server's players after every handshakeAccepted, on the session's thread
+    private final Supplier<List<PlayerInfo>> players;
     private final ScheduledExecutorService thread;
 
     // This process's session: its start time in ms, like the hub's
@@ -39,15 +54,24 @@ public final class ClientSession {
     private long hubSession;
     private long lastRelayed;
 
+    // Events the hub hasn't acknowledged yet, oldest first, as in PROTOCOL.md "Sequence numbers, acknowledgements
+    // and replay". The oldest is dropped past MAX_UNACKED
+    private static final int MAX_UNACKED = 200;
+    private final ArrayDeque<C2SEvent> unacked = new ArrayDeque<>();
+    // The seq of the last event built, 0 before the first
+    private long seq;
+
     /**
      * @param server this game server's id.
      * @param colour one of the 16 Minecraft colour names, lowercase.
      * @param transport the mod's socket; it calls {@link #onOpen}, {@link #onFrame} and {@link #onClose}.
      * @param listener gets the hub's frames, on the session's thread.
+     * @param players this server's players, asked for after every {@code handshakeAccepted}. Called on the session's
+     * thread, so it must be safe to call from there.
      */
     public ClientSession(String server, String name, String token, String colour, String address, int maxPlayers,
-            Transport transport, MessageListener listener) {
-        this(server, name, token, colour, address, maxPlayers, transport, listener,
+            Transport transport, MessageListener listener, Supplier<List<PlayerInfo>> players) {
+                this(server, name, token, colour, address, maxPlayers, transport, listener, players,
                 Executors.newSingleThreadScheduledExecutor(runnable -> {
                     Thread sessionThread = new Thread(runnable, "polychat-session");
                     // The game's threads keep the process alive; this one shouldn't block exit
@@ -58,7 +82,8 @@ public final class ClientSession {
 
     /** For tests: they pass their own executor and wait on it. */
     ClientSession(String server, String name, String token, String colour, String address, int maxPlayers,
-            Transport transport, MessageListener listener, ScheduledExecutorService thread) {
+            Transport transport, MessageListener listener, Supplier<List<PlayerInfo>> players,
+            ScheduledExecutorService thread) {
         this.server = server;
         this.name = name;
         this.token = token;
@@ -67,6 +92,7 @@ public final class ClientSession {
         this.maxPlayers = maxPlayers;
         this.transport = transport;
         this.listener = listener;
+        this.players = players;
         this.thread = thread;
     }
 
@@ -98,7 +124,15 @@ public final class ClientSession {
                 S2CHandshakeAccepted handshakeAccepted = (S2CHandshakeAccepted) payload;
                 accepted = true;
                 hubSession = handshakeAccepted.getSession();
+                // Resend what the hub missed, oldest first, then the players, as in PROTOCOL.md "Handshake"
+                acknowledged(handshakeAccepted.getLastSeq());
+                for (C2SEvent event : unacked){
+                    transport.send(PayloadCodec.encode(event));
+                }
+                send(new C2SPlayerList(++seq, players.get()));
                 listener.servers(handshakeAccepted.getServers());
+            } else if (payload instanceof S2CAcknowledgement) {
+                acknowledged(((S2CAcknowledgement) payload).getSeq());
             }
         });
     }
@@ -110,4 +144,62 @@ public final class ClientSession {
             // Reconnect policy comes in step 5
         });
     }
+
+    /** A player on this server said something in chat. */
+    public void chatMessage(String player, String senderId, String message) {
+        thread.execute(() -> send(new C2SChatMessage(++seq, player, senderId, message)));
+    }
+
+    /** A player joined this server; online counts them. */
+    public void playerJoin(String player, String uuid, int online) {
+        thread.execute(() -> send(new C2SPlayerJoin(++seq, player, uuid, online)));
+    }
+
+    /** A player left this server; online no longer counts them. */
+    public void playerLeave(String player, String uuid, int online) {
+        thread.execute(() -> send(new C2SPlayerLeave(++seq, player, uuid, online)));
+    }
+
+    /** The answer to a {@code runCommand}. Never buffered, as PROTOCOL.md says. */
+    public void commandResult(String id, boolean ok, String output, boolean truncated) {
+        thread.execute(() -> send(new C2SCommandResult(++seq, id, ok, output, truncated)));
+    }
+
+    /** Staff on this server muted or unmuted a player. */
+    public void mute(String target, boolean muted, String by) {
+        thread.execute(() -> send(new C2SMute(++seq, target, muted, by)));
+    }
+
+    /** This server's state changed. Also the state the next {@code handshake} carries. */
+    public void serverStatus(ServerState state) {
+        thread.execute(() -> {
+            this.state = state;
+            send(new C2SServerStatus(++seq, state));
+        });
+    }
+
+    /**
+     * Buffers the event unless the spec says not to ({@code playerList}, {@code commandResult}), and sends it if this
+     * connection was accepted. Otherwise it waits in the buffer for the resend after the next
+     * {@code handshakeAccepted}.
+     */
+    private void send(C2SEvent event) {
+        if (!(event instanceof C2SPlayerList || event instanceof C2SCommandResult)) {
+            unacked.addLast(event);
+            if (unacked.size() > MAX_UNACKED) {
+                unacked.removeFirst();
+            }
+        }
+        if (accepted) {
+            transport.send(PayloadCodec.encode(event));
+        }
+    }
+
+    /** Drops every buffered event with seq at or below upTo: the hub has it. */
+    private void acknowledged(long upTo){
+        while(!(unacked.isEmpty()) && unacked.peekFirst().getSeq() <= upTo){
+            unacked.removeFirst();
+        }
+    }
+
 }
