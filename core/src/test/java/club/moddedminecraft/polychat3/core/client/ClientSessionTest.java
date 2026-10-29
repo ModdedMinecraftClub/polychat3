@@ -10,8 +10,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,12 +47,12 @@ class ClientSessionTest {
     private final RecordingListener listener = new RecordingListener();
     /** What the mod would say is online; the session asks for it after every handshakeAccepted. */
     private final List<PlayerInfo> online = new ArrayList<>();
-    private ScheduledExecutorService thread;
+    private RecordingExecutor thread;
     private ClientSession session;
 
     @BeforeEach
     void createSession() {
-        thread = Executors.newSingleThreadScheduledExecutor();
+        thread = new RecordingExecutor();
         session = new ClientSession("a5", "All the Mods 5", "secret", "yellow", "a5.example.net", 40, transport,
                 listener, () -> new ArrayList<>(online), thread);
     }
@@ -327,6 +328,67 @@ class ClientSessionTest {
         session.onFrame(PayloadCodec.encode(payload));
     }
 
+    @Test
+    void normalCloseDoesNothing() throws Exception {
+        accept();
+        session.onClose(Protocol.CLOSE_NORMAL, "");
+        sync();
+        assertEquals(Collections.emptyList(), thread.delays);
+        assertEquals(0, transport.connects);
+        assertEquals(Collections.emptyList(), listener.heard);
+    }
+
+    /** A bad id or a newer connection won't fix itself, so the session logs it and stays closed. */
+    @Test
+    void badServerIdAndReplacedStop() throws Exception {
+        session.onClose(Protocol.CLOSE_BAD_SERVER_ID, "");
+        session.onClose(Protocol.CLOSE_REPLACED, "");
+        sync();
+        assertEquals(Collections.emptyList(), thread.delays);
+        assertEquals(0, transport.connects);
+        assertEquals(Arrays.asList("error", "error"), listener.heard);
+    }
+
+    @Test
+    void badTokenAndVersionRetryEveryMinute() throws Exception {
+        session.onClose(Protocol.CLOSE_BAD_TOKEN, "");
+        session.onClose(Protocol.CLOSE_BAD_VERSION, "");
+        sync();
+        assertEquals(Arrays.asList(60_000L, 60_000L), thread.delays);
+        assertEquals(2, transport.connects);
+        assertEquals(Arrays.asList("error", "error"), listener.heard);
+    }
+
+    /** Drops, a failed connect (-1) and a too big frame all back off: 1, 2, 4 s, with jitter. */
+    @Test
+    void otherClosesBackOff() throws Exception {
+        session.onClose(1006, "");
+        session.onClose(-1, "");
+        session.onClose(Protocol.CLOSE_TOO_BIG, "");
+        sync();
+        assertBackoff(Arrays.asList(1L, 2L, 4L), thread.delays);
+        assertEquals(3, transport.connects);
+        assertEquals(Arrays.asList("warn", "warn", "error"), listener.heard);
+    }
+
+    @Test
+    void acceptedConnectionResetsTheBackoff() throws Exception {
+        session.onClose(1006, "");
+        session.onClose(1006, "");
+        accept();
+        session.onClose(1006, "");
+        sync();
+        assertBackoff(Arrays.asList(1L, 2L, 1L), thread.delays);
+    }
+
+    private static void assertBackoff(List<Long> seconds, List<Long> millis) {
+        assertEquals(seconds.size(), millis.size(), "delays " + millis);
+        for (int i = 0; i < seconds.size(); i++) {
+            long base = seconds.get(i) * 1000;
+            assertTrue(millis.get(i) >= base * 8 / 10 && millis.get(i) <= base * 12 / 10, "delays " + millis);
+        }
+    }
+
     /** Opens the connection and accepts it, as a hub with nothing to resend or list would. */
     private void accept() {
         session.onOpen();
@@ -368,14 +430,38 @@ class ClientSessionTest {
         return events;
     }
 
-    /** Waits until every task already posted to the session's thread has run. */
+    /** Waits until every task already posted to the session's thread, and any task those posted, has run. */
     private void sync() throws InterruptedException, ExecutionException {
-        thread.submit(() -> {
-        }).get();
+        // Twice, so a task that a posted task posted in turn (a reconnect after a close) has run too
+        for (int i = 0; i < 2; i++) {
+            thread.submit(() -> {
+            }).get();
+        }
     }
 
     private static C2SHandshake handshake(String frame) throws ProtocolException {
         return assertInstanceOf(C2SHandshake.class, PayloadCodec.C2S.decode(frame));
+    }
+
+    /**
+     * The session's thread for tests. Records the delay of every task scheduled with one, then runs it at once, so
+     * reconnect tests don't wait seconds.
+     */
+    private static final class RecordingExecutor extends ScheduledThreadPoolExecutor {
+        final List<Long> delays = Collections.synchronizedList(new ArrayList<>());
+
+        RecordingExecutor() {
+            super(1);
+        }
+
+        @Override
+        public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+            // execute and submit come through here too, with no delay; only real delays are recorded
+            if (delay > 0) {
+                delays.add(unit.toMillis(delay));
+            }
+            return super.schedule(command, 0, unit);
+        }
     }
 
     /** Records what the session asks of the socket. Written on the session's thread, read after {@link #sync}. */

@@ -4,6 +4,7 @@ import java.util.ArrayDeque;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 import club.moddedminecraft.polychat3.core.Protocol;
@@ -75,6 +76,11 @@ public final class ClientSession {
     // Invalid frames from the hub in a row on this connection; the third closes it, as in PROTOCOL.md "Errors"
     private static final int MAX_INVALID_FRAMES = 3;
     private int invalidFrames;
+
+    // Delays between reconnects; reset by every handshakeAccepted
+    private final Backoff backoff = new Backoff();
+    // PROTOCOL.md "Close codes": a wrong token or version is retried this often, not backed off
+    private static final long RETRY_MILLIS = 60_000;
 
     /**
      * @param server this game server's id.
@@ -152,6 +158,7 @@ public final class ClientSession {
             if (payload instanceof S2CHandshakeAccepted) {
                 S2CHandshakeAccepted handshakeAccepted = (S2CHandshakeAccepted) payload;
                 accepted = true;
+                backoff.reset();
                 if (handshakeAccepted.getSession() != hubSession) {
                     // A restarted hub numbers its relayed frames from 1 again
                     lastRelayed = 0;
@@ -183,11 +190,39 @@ public final class ClientSession {
         });
     }
 
-    /** The transport's socket closed, or failed to open. */
+    /**
+     * The transport's socket closed, or failed to open. Reconnects or not as PROTOCOL.md "Close codes" says: nothing
+     * after 1000, never after 4003 or 4004, every 60 s after 4001 or 4002, otherwise with {@link Backoff}.
+     *
+     * @param code the close code, or -1 if the connection never opened.
+     */
     public void onClose(int code, String reason) {
         thread.execute(() -> {
             accepted = false;
-            // Reconnect policy comes in step 5
+            switch (code) {
+                case Protocol.CLOSE_NORMAL:
+                    // This server closed it after stopped or crashed; nothing to do
+                    break;
+                case Protocol.CLOSE_BAD_SERVER_ID:
+                case Protocol.CLOSE_REPLACED:
+                    listener.error("closed with " + code + ", not reconnecting: " + reason);
+                    break;
+                case Protocol.CLOSE_BAD_TOKEN:
+                case Protocol.CLOSE_BAD_VERSION:
+                    listener.error("closed with " + code + ", retrying in 60 s: " + reason);
+                    reconnectIn(RETRY_MILLIS);
+                    break;
+                case Protocol.CLOSE_TOO_BIG:
+                    listener.error("closed with " + code + ", frame too big: " + reason);
+                    reconnectIn(backoff.nextMillis());
+                    break;
+                default:
+                    // 1001, 1006, 4000, 4005, and -1 when a connect fails: try again
+                    long delay = backoff.nextMillis();
+                    listener.warn("closed with " + code + ", reconnecting in " + delay + " ms");
+                    reconnectIn(delay);
+                    break;
+            }
         });
     }
 
@@ -246,6 +281,11 @@ public final class ClientSession {
         while(!(unacked.isEmpty()) && unacked.peekFirst().getSeq() <= upTo){
             unacked.removeFirst();
         }
+    }
+
+    /** Opens a new connection after the delay, on the session's thread. */
+    private void reconnectIn(long millis) {
+        thread.schedule(transport::connect, millis, TimeUnit.MILLISECONDS);
     }
 
     /** Remembers the frame's relay seq for the next handshake, then hands it to the listener. */
