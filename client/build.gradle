@@ -32,12 +32,15 @@ repositories {
     }
 }
 
+
 dependencies {
     // core's plain jar is disabled; use its shaded jar
     implementation project(path: ':core', configuration: 'shadowRuntimeElements')
     //Go!Agnostic
     annotationProcessor 'computer.heather.goagnostic:api:BLEEDINGEDGE-SNAPSHOT'
-    implementation 'computer.heather.goagnostic:api:BLEEDINGEDGE-SNAPSHOT'
+    compileOnly 'computer.heather.goagnostic:api:BLEEDINGEDGE-SNAPSHOT'
+
+    implementation 'org.java-websocket:Java-WebSocket:1.6.0'
 }
 
 // Apply a specific Java toolchain to ease working on different environments.
@@ -53,8 +56,17 @@ tasks.named('jar') {
 }
 
 tasks.named('shadowJar') {
-    archiveBaseName = 'polychat3-server'
+    relocate 'org.java_websocket',
+            'club.moddedminecraft.polychat3.internal.websocket'
+    //the websocket lib uses it.. polychat client doesn't, it uses GA's logger
+    relocate 'org.slf4j',
+            'club.moddedminecraft.polychat3.internal.slfj4'
+    archiveBaseName = 'polychat3-client'
     archiveClassifier = ''
+}
+
+tasks.named('build') {
+    dependsOn tasks.named('shadowJar')
 }
 
 // Only the jar is released, so skip the application plugin's zip and tar bundles
