@@ -93,13 +93,20 @@ public final class Hub {
         }));
     }
 
-    /** A socket closed. Forgets it if it was still the live connection for its server id. */
+    /**
+     * A socket closed. If it was still the live connection for its server id, forgets it and marks the server
+     * {@code offline} for the other game servers, as in PROTOCOL.md "Shutting down".
+     */
     public void closed(Connection connection, int code) {
         thread.execute(logged(() -> {
             connection.setState(Connection.State.CLOSING);
             C2SHandshake handshake = connection.getHandshake();
             if (handshake != null && servers.remove(handshake.getServer(), connection)) {
+                String id = handshake.getServer();
                 LOG.info("{} disconnected with {}", handshake.getServer(), code);
+                if (roster.disconnected(id)) {
+                    broadcast(relay.status(roster.entry(id)), connection);
+                }
             }
         }));
     }
@@ -114,6 +121,15 @@ public final class Hub {
         connection.send(new ProtocolError(code, message));
         // No close reason: it is limited to 123 bytes, and the protocolError already says why
         connection.close(closeCode);
+    }
+
+    /** Sends a relayed frame to every active game server except origin. */
+    private void broadcast(S2CRelayed frame, Connection origin) {
+        for (Connection other : servers.values()) {
+            if (other != origin && other.getState() == Connection.State.ACTIVE) {
+                other.send(frame);
+            }
+        }
     }
 
     /** Wraps a hub task so an exception is logged instead of silently lost by the executor. */
@@ -157,11 +173,7 @@ public final class Hub {
             roster.update(id, event);
             S2CRelayed relayed = relay.relayed(roster.entry(id), event);
             if (relayed != null) {
-                for (Connection other : servers.values()) {
-                    if (other != connection && other.getState() == Connection.State.ACTIVE) {
-                        other.send(relayed);
-                    }
-                }
+                broadcast(relayed, connection);
             }
         }
         connection.send(new S2CAcknowledgement(sequences.last(id)));

@@ -15,8 +15,8 @@ import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerEntry;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerStatus;
 
 /**
- * Turns a client's event into the frame the other game servers get, numbered with the hub's relay {@code seq}, as
- * in PROTOCOL.md "Replay to the client". Only used on the hub thread.
+ * Turns a client's event, or a status the hub sets itself, into the frame the other game servers get, numbered
+ * with the hub's relay {@code seq}, as in PROTOCOL.md "Replay to the client". Only used on the hub thread.
  */
 final class Relay {
     /** The relay {@code seq} of the last frame built, 0 before the first. One number for the whole hub. */
@@ -56,10 +56,19 @@ final class Relay {
         }
 
         if (event instanceof C2SServerStatus) {
-            return new S2CServerStatus(server, serverName, ++lastRelayed, origin.getState(), origin.getColour(),
-                    origin.getAddress(), origin.getMaxPlayers(), origin.getPlayers());
+            return status(origin);
         }
 
         return null;
+    }
+
+    /**
+     * @param origin the roster entry of the server, as it is now.
+     * @return a {@code serverStatus} built from it, with the next relay {@code seq}. For a status the client
+     * reported and for one the hub sets itself, like {@code offline}.
+     */
+    S2CServerStatus status(S2CServerEntry origin) {
+        return new S2CServerStatus(origin.getId(), origin.getName(), ++lastRelayed, origin.getState(),
+                origin.getColour(), origin.getAddress(), origin.getMaxPlayers(), origin.getPlayers());
     }
 }

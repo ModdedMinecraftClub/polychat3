@@ -252,8 +252,12 @@ including a new type, bumps it by one in the next release.
   `serverStatus`, for at most 3 s, and closes the connection with 1000 either way.
   If the hub is unreachable, the JVM exits after 3 s and the hub sees a dropped
   connection, marking the server `offline`.
-- After that clean close the hub forgets the server's last `seq`, so the restarted
-  server and the hub both start again from the beginning.
+- When a connection closes, for any reason, the hub marks the server `offline`
+  and relays that `serverStatus`, unless the server last reported `stopped` or
+  `crashed`: that state stays, and the other servers already have it. A
+  connection replaced by a newer one (4004) changes nothing.
+- The hub keeps a server's last `seq` after any close. The restarted server's
+  new `session` resets it to 0, so both ends start again from the beginning.
 - A process killed without shutdown hooks (`kill -9`, the OOM killer, power loss)
   sends nothing and looks like a dropped connection. The new `session` in its next
   `handshake` is what tells the hub it restarted.

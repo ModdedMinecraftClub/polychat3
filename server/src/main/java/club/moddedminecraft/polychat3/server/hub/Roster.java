@@ -55,6 +55,23 @@ final class Roster {
     }
 
     /**
+     * The server's live connection closed. Marks it {@code offline} with no players, unless it last reported
+     * {@code stopped} or {@code crashed}, as in PROTOCOL.md "Shutting down".
+     *
+     * @return true if the state changed, so the hub relays a {@code serverStatus}.
+     * @throws IllegalStateException if {@link #connected} never saw this id.
+     */
+    boolean disconnected(String id) {
+        Entry entry = find(id);
+        if (entry.state == ServerState.STOPPED || entry.state == ServerState.CRASHED) {
+            return false; // The other servers already have this state
+        }
+        entry.state = ServerState.OFFLINE;
+        entry.players.clear();
+        return true;
+    }
+
+    /**
      * @return what the hub knows about this server now, with its own copy of the players.
      * @throws IllegalStateException if {@link #connected} never saw this id.
      */
