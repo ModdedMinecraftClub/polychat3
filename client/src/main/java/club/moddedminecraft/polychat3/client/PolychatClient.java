@@ -21,7 +21,8 @@ public class PolychatClient extends GoAgnosticMod{
         super(modName, modId, logger);
 
         //Init config
-        CONFIG = ConfigLoader.load(Paths.get("config/polychat-client.jsonc"), PolychatClientConfig.class, "defaults/polychat-client.jsonc");
+
+        CONFIG = ConfigLoader.load(Paths.get("config/polychat-client.jsonc"), PolychatClientConfig.class, "/defaults/polychat-client.jsonc");
         CONFIG.validate();
 
         //Listen to chat
