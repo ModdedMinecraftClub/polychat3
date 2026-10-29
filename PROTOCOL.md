@@ -266,7 +266,9 @@ including a new type, bumps it by one in the next release.
 
 - **Socket.** Both ends ping every 30 s. No pong within 45 s closes the
   connection locally with 1006.
-- **Game thread.** If the hub sees no `heartbeat` or event for 45 s, it marks the
+- **Game thread.** The client sends `heartbeat` every 15 s from a game-thread
+  timer, so it stops when the game thread hangs.
+  If the hub sees no `heartbeat` or event for 45 s, it marks the
   server `unresponsive` and relays that `serverStatus`. The socket stays open.
   The next heartbeat or event restores the last state the client reported.
 
