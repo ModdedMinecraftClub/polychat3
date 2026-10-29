@@ -3,9 +3,12 @@ package club.moddedminecraft.polychat3.core.client;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 import club.moddedminecraft.polychat3.core.Protocol;
@@ -86,6 +89,8 @@ public final class ClientSession {
 
     // PROTOCOL.md "Shutting down": how long stop waits for the hub to acknowledge the last serverStatus
     private static final long STOP_TIMEOUT_SECONDS = 3;
+    // How long stop waits for the session thread to issue the close
+    private static final long CLOSE_TIMEOUT_SECONDS = 1;
     // Set by stop: the seq to wait for, and the latch the waiting thread is blocked on
     private long stopSeq;
     private CountDownLatch stopAcked;
@@ -102,7 +107,7 @@ public final class ClientSession {
      */
     public ClientSession(String server, String name, String token, String colour, String address, int maxPlayers,
             Transport transport, MessageListener listener, Supplier<List<PlayerInfo>> players) {
-                this(server, name, token, colour, address, maxPlayers, transport, listener, players,
+        this(server, name, token, colour, address, maxPlayers, transport, listener, players,
                 Executors.newSingleThreadScheduledExecutor(runnable -> {
                     Thread sessionThread = new Thread(runnable, "polychat-session");
                     // The game's threads keep the process alive; this one shouldn't block exit
@@ -302,10 +307,18 @@ public final class ClientSession {
             // Keep the interrupt for the caller; close anyway
             Thread.currentThread().interrupt();
         }
-        thread.execute(() -> {
+        Future<?> closed = thread.submit(() -> {
             stopped = true;
             transport.close(Protocol.CLOSE_NORMAL);
         });
+        try {
+            // Return only once close was issued, or the JVM can exit before the daemon session thread runs it
+            closed.get(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException e) {
+            // close threw, or the session thread is stuck; stop has nothing more it can do
+        }
     }
 
     /**
@@ -327,7 +340,7 @@ public final class ClientSession {
 
     /** Drops every buffered event with seq at or below upTo: the hub has it. */
     private void acknowledged(long upTo){
-        while(!(unacked.isEmpty()) && unacked.peekFirst().getSeq() <= upTo){
+        while (!(unacked.isEmpty()) && unacked.peekFirst().getSeq() <= upTo) {
             unacked.removeFirst();
         }
         // stop is waiting for this ack

@@ -3,16 +3,18 @@ package club.moddedminecraft.polychat3.fakeclient;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URI;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import club.moddedminecraft.polychat3.core.client.ClientSession;
 import club.moddedminecraft.polychat3.core.client.MessageListener;
+import club.moddedminecraft.polychat3.core.payloads.PlayerInfo;
 import club.moddedminecraft.polychat3.core.payloads.ServerState;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CChatMessage;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerJoin;
@@ -83,12 +85,26 @@ public final class FakeClient {
                 System.out.println("! " + message.getMessage());
             }
         };
+        // Who is online, as a game would know it; the session asks for a copy after every handshakeAccepted
+        List<PlayerInfo> online = new CopyOnWriteArrayList<>();
         ClientSession session = new ClientSession(id, name, token, "gray", "localhost", 20, transport, listener,
-                Collections::emptyList);
-
+                () -> new ArrayList<>(online));
         transport.setSession(session);
-        session.start();
+
+        // The server starts and Tester joins before the first connection: the events wait in the session's buffer
+        // and go out after handshakeAccepted, followed by a player list that already has Tester
         session.serverStatus(ServerState.STARTED);
+        online.add(new PlayerInfo(PLAYER, PLAYER_UUID));
+        session.playerJoin(PLAYER, PLAYER_UUID, online.size());
+        session.start();
+
+        // PROTOCOL.md "Shutting down": the client stops from a shutdown hook, which runs on System.exit, Ctrl+C and
+        // SIGTERM alike. Tester leaves first, as players do when a real server stops
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            online.clear();
+            session.playerLeave(PLAYER, PLAYER_UUID, 0);
+            session.stop(ServerState.STOPPED);
+        }, "polychat-stop"));
 
         // The heartbeat a game's tick would send, every 15 s
         ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor();
@@ -99,7 +115,7 @@ public final class FakeClient {
         while ((line = in.readLine()) != null && !line.equals("/stop")) {
             session.chatMessage(PLAYER, PLAYER_UUID, line);
         }
-        session.stop(ServerState.STOPPED);
+        // Runs the shutdown hook, which stops the session
         System.exit(0);
     }
 }

@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -422,6 +423,23 @@ class ClientSessionTest {
         assertEquals(Collections.singletonList(Protocol.CLOSE_NORMAL), transport.closes);
     }
 
+    /** stop returns only once close was issued, so a JVM that exits right after it still gets the close out. */
+    @Test
+    void stopReturnsAfterTheClose() throws Exception {
+        transport.closeDelayMillis = 200;
+        accept();
+        Thread stopping = new Thread(() -> session.stop(ServerState.STOPPED));
+        stopping.start();
+        for (int i = 0; i < 100 && !eventsSent().contains("serverStatus 2"); i++) {
+            Thread.sleep(10);
+        }
+        hub(new S2CAcknowledgement(2));
+        stopping.join(2000);
+        assertFalse(stopping.isAlive(), "stop didn't return");
+        // No sync: stop itself must have waited for the close
+        assertEquals(Collections.singletonList(Protocol.CLOSE_NORMAL), transport.closes);
+    }
+
     /** With no hub to answer, stop gives up after 3 s, closes, and nothing reconnects afterwards. */
     @Test
     void stopGivesUpAfterThreeSecondsAndNeverReconnects() throws Exception {
@@ -513,8 +531,11 @@ class ClientSessionTest {
     /** Records what the session asks of the socket. Written on the session's thread, read after {@link #sync}. */
     private static final class RecordingTransport implements Transport {
         int connects;
-        final List<String> sent = new ArrayList<>();
+        // Safe to read while the session thread appends: the stop tests read it from another thread
+        final List<String> sent = new CopyOnWriteArrayList<>();
         final List<Integer> closes = new ArrayList<>();
+        /** A slow socket: close takes this long before it is recorded. */
+        long closeDelayMillis;
 
         @Override
         public void connect() {
@@ -528,7 +549,16 @@ class ClientSessionTest {
 
         @Override
         public void close(int code) {
+            sleep(closeDelayMillis);
             closes.add(code);
+        }
+
+        private static void sleep(long millis) {
+            try {
+                Thread.sleep(millis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
