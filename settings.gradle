@@ -11,4 +11,4 @@ plugins {
 }
 
 rootProject.name = 'polychat3'
-include('server', 'core', 'client')
+include('server', 'core', 'client', 'fakeclient')

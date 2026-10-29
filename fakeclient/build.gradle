@@ -1,0 +1,47 @@
+plugins {
+    id 'application'
+    id 'java'
+    id 'com.gradleup.shadow' version '9.3.1'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // core's plain jar is disabled; use its shaded jar
+    implementation project(path: ':core', configuration: 'shadowRuntimeElements')
+    implementation 'org.java-websocket:Java-WebSocket:1.6.0'
+    // Java-WebSocket logs through SLF4J; this prints its logs to stderr
+    runtimeOnly 'org.slf4j:slf4j-simple:2.0.13'
+}
+
+// Same Java as the client, which runs this code inside the game
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(8)
+    }
+}
+
+application {
+    mainClass = 'club.moddedminecraft.polychat3.fakeclient.FakeClient'
+}
+
+// A dev tool, never released; one shadow jar is enough to run it outside Gradle
+tasks.named('jar') {
+    enabled = false
+}
+
+tasks.named('shadowJar') {
+    archiveBaseName = 'polychat3-fakeclient'
+    archiveClassifier = ''
+}
+
+tasks.matching { it.name in ['distZip', 'distTar', 'shadowDistZip', 'shadowDistTar'] }.configureEach {
+    enabled = false
+}
+
+// Typed lines become chat, so the program needs the terminal's input
+tasks.named('run') {
+    standardInput = System.in
+}
