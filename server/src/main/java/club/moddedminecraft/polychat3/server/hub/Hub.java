@@ -205,11 +205,11 @@ public final class Hub {
         if (old != null) {
             refuse(old, Protocol.CLOSE_REPLACED, "replaced", "replaced by a newer connection for " + id);
         }
-        // lastSeq lets the client resend what the hub missed. The hub doesn't track other servers or keep
-        // relayed frames yet, so there is nothing to list or replay
+        // lastSeq lets the client resend what the hub missed; servers is every other game server's current
+        // state. The hub doesn't keep relayed frames yet, so there is nothing to replay
         connection
                 .send(new S2CHandshakeAccepted(Protocol.VERSION, session, sequences.resume(id, handshake.getSession()),
-                        Collections.emptyList()));
+                        roster.others(id)));
         // No mute list is kept yet either
         connection.send(new S2CMuteList(Collections.emptyList()));
         LOG.info("{} ({}) connected from {}", id, handshake.getName(), connection.remoteAddress());

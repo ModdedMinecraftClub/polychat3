@@ -1,9 +1,9 @@
 package club.moddedminecraft.polychat3.server.hub;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 import club.moddedminecraft.polychat3.core.payloads.PlayerInfo;
 import club.moddedminecraft.polychat3.core.payloads.ServerState;
@@ -17,11 +17,11 @@ import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerEntry;
 
 /**
  * What the hub knows about each game server: its handshake details, state and players. Feeds the relayed
- * {@code serverStatus} and, later, {@code handshakeAccepted.servers}. Only used on the hub thread.
+ * {@code serverStatus} and {@code handshakeAccepted.servers}. Only used on the hub thread.
  */
 final class Roster {
-    /** By game server id. */
-    private final Map<String, Entry> servers = new HashMap<>();
+    /** By game server id, sorted so {@link #others} lists servers in the same order every time. */
+    private final Map<String, Entry> servers = new TreeMap<>();
 
     /**
      * Records a server after its handshake is accepted, replacing what was known before. Players start empty:
@@ -62,6 +62,20 @@ final class Roster {
         Entry entry = find(id);
         return new S2CServerEntry(entry.id, entry.name, entry.colour, entry.address, entry.maxPlayers,
                 entry.state, new ArrayList<>(entry.players));
+    }
+
+    /**
+     * @return every server the hub knows except {@code id}, in any state and sorted by id, each with its own copy
+     *         of the players. For {@code handshakeAccepted.servers}.
+     */
+    List<S2CServerEntry> others(String id) {
+        List<S2CServerEntry> others = new ArrayList<>();
+        for (Entry entry : servers.values()) {
+            if (!entry.id.equals(id)) {
+                others.add(entry(entry.id));
+            }
+        }
+        return others;
     }
 
     /** @throws IllegalStateException if {@link #connected} never saw this id, which is a hub bug. */
