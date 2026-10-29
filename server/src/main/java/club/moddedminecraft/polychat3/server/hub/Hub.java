@@ -17,14 +17,18 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
 import club.moddedminecraft.polychat3.core.payloads.PayloadCodec;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolError;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolException;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SEvent;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CAcknowledgement;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CRelayed;
 import club.moddedminecraft.polychat3.server.net.Connection;
 
 /**
  * The core of the polychat server. Every event from the endpoint runs on one thread here, so the hub's
- * state needs no locks. Accepts or refuses each connection's handshake, as described in PROTOCOL.md.
+ * state needs no locks. Accepts or refuses each connection's handshake, then acknowledges its events and relays
+ * them to the other game servers, as described in PROTOCOL.md.
  */
 public final class Hub {
     private static final Logger LOG = LoggerFactory.getLogger(Hub.class);
@@ -36,6 +40,12 @@ public final class Hub {
     private final long session = System.currentTimeMillis();
     /** Accepted connections, by server id. */
     private final Map<String, Connection> servers = new HashMap<>();
+    /** The last accepted {@code seq} for each game server, kept across its connections. */
+    private final SequenceTracker sequences = new SequenceTracker();
+    /** Builds the frames to relay to other game servers, numbered with the hub's relay {@code seq}. */
+    private final Relay relay = new Relay();
+    /** Each game server's details, state and players, as of its latest handshake and events. */
+    private final Roster roster = new Roster();
     /** The hub thread. Everything the hub does runs on it. */
     private final ScheduledExecutorService thread = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread hubThread = new Thread(runnable, "polychat-hub");
@@ -83,13 +93,20 @@ public final class Hub {
         }));
     }
 
-    /** A socket closed. Forgets it if it was still the live connection for its server id. */
+    /**
+     * A socket closed. If it was still the live connection for its server id, forgets it and marks the server
+     * {@code offline} for the other game servers, as in PROTOCOL.md "Shutting down".
+     */
     public void closed(Connection connection, int code) {
         thread.execute(logged(() -> {
             connection.setState(Connection.State.CLOSING);
             C2SHandshake handshake = connection.getHandshake();
             if (handshake != null && servers.remove(handshake.getServer(), connection)) {
+                String id = handshake.getServer();
                 LOG.info("{} disconnected with {}", handshake.getServer(), code);
+                if (roster.disconnected(id)) {
+                    broadcast(relay.status(roster.entry(id)), connection);
+                }
             }
         }));
     }
@@ -106,6 +123,15 @@ public final class Hub {
         connection.close(closeCode);
     }
 
+    /** Sends a relayed frame to every active game server except origin. */
+    private void broadcast(S2CRelayed frame, Connection origin) {
+        for (Connection other : servers.values()) {
+            if (other != origin && other.getState() == Connection.State.ACTIVE) {
+                other.send(frame);
+            }
+        }
+    }
+
     /** Wraps a hub task so an exception is logged instead of silently lost by the executor. */
     private static Runnable logged(Runnable task) {
         return () -> {
@@ -117,10 +143,15 @@ public final class Hub {
         };
     }
 
-    /** A frame after the handshake. Closes the connection after too many invalid frames in a row. */
+    /**
+     * A frame after the handshake. Acknowledges every event, as in PROTOCOL.md "Sequence numbers,
+     * acknowledgements and replay". An event that isn't a duplicate is first relayed to every other game server.
+     * Closes the connection after too many invalid frames in a row.
+     */
     private void receive(Connection connection, String frame) {
+        Payload payload;
         try {
-            PayloadCodec.C2S.decode(frame);
+            payload = PayloadCodec.C2S.decode(frame);
         } catch (ProtocolException e) {
             if (connection.invalidFrame() >= MAX_INVALID_FRAMES) {
                 refuse(connection, Protocol.CLOSE_PROTOCOL_ERROR, "protocol_error",
@@ -132,7 +163,20 @@ public final class Hub {
             return;
         }
         connection.validFrame();
-        // The hub doesn't act on events yet
+        if (!(payload instanceof C2SEvent)) {
+            // heartbeat and protocolError aren't events, so no ack
+            return;
+        }
+        C2SEvent event = (C2SEvent) payload;
+        String id = connection.getHandshake().getServer();
+        if (sequences.accept(id, event.getSeq())) {
+            roster.update(id, event);
+            S2CRelayed relayed = relay.relayed(roster.entry(id), event);
+            if (relayed != null) {
+                broadcast(relayed, connection);
+            }
+        }
+        connection.send(new S2CAcknowledgement(sequences.last(id)));
     }
 
     /** The first frame. Accepts or refuses the handshake, as in PROTOCOL.md "Handshake". */
@@ -168,12 +212,16 @@ public final class Hub {
 
         connection.setHandshake(handshake);
         connection.setState(Connection.State.ACTIVE);
+        roster.connected(handshake);
         Connection old = servers.put(id, connection);
         if (old != null) {
             refuse(old, Protocol.CLOSE_REPLACED, "replaced", "replaced by a newer connection for " + id);
         }
-        // The hub doesn't track events or other servers yet, so there is nothing to resume, list or replay
-        connection.send(new S2CHandshakeAccepted(Protocol.VERSION, session, 0, Collections.emptyList()));
+        // lastSeq lets the client resend what the hub missed; servers is every other game server's current
+        // state. The hub doesn't keep relayed frames yet, so there is nothing to replay
+        connection
+                .send(new S2CHandshakeAccepted(Protocol.VERSION, session, sequences.resume(id, handshake.getSession()),
+                        roster.others(id)));
         // No mute list is kept yet either
         connection.send(new S2CMuteList(Collections.emptyList()));
         LOG.info("{} ({}) connected from {}", id, handshake.getName(), connection.remoteAddress());

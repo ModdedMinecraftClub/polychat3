@@ -11,7 +11,10 @@ public enum ServerState {
     @SerializedName("stopping") STOPPING,
     @SerializedName("stopped") STOPPED,
     @SerializedName("crashed") CRASHED,
-    /** Set by the hub when the server's connection closes; a client never sends it. */
+    /**
+     * Set by the hub when the server's connection closes, unless it last reported {@code stopped} or
+     * {@code crashed}; a client never sends it.
+     */
     @SerializedName("offline") OFFLINE,
     /** Set by the hub when heartbeats stop; a client never sends it. */
     @SerializedName("unresponsive") UNRESPONSIVE
