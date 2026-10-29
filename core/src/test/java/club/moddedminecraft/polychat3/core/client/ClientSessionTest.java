@@ -21,14 +21,25 @@ import club.moddedminecraft.polychat3.core.Protocol;
 import club.moddedminecraft.polychat3.core.payloads.Payload;
 import club.moddedminecraft.polychat3.core.payloads.PayloadCodec;
 import club.moddedminecraft.polychat3.core.payloads.PlayerInfo;
+import club.moddedminecraft.polychat3.core.payloads.ProtocolError;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolException;
 import club.moddedminecraft.polychat3.core.payloads.ServerState;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SEvent;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerList;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CAcknowledgement;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CChatMessage;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMute;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerJoin;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerLeave;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerList;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CRelayed;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CRunCommand;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerEntry;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerStatus;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CSystemMessage;
 
 class ClientSessionTest {
     private final RecordingTransport transport = new RecordingTransport();
@@ -103,9 +114,9 @@ class ClientSessionTest {
                 PayloadCodec.encode(new S2CHandshakeAccepted(Protocol.VERSION, 0, 0, listener.servers)));
     }
 
-    /** An invalid frame is ignored for now (step 4 answers it), and the session keeps working. */
+    /** An invalid frame doesn't stop the session: a valid frame after it still works. */
     @Test
-    void invalidFrameIsIgnored() throws Exception {
+    void invalidFrameDoesNotStopTheSession() throws Exception {
         session.onOpen();
         session.onFrame("{");
         session.onFrame(PayloadCodec.encode(new S2CHandshakeAccepted(Protocol.VERSION, 1, 0,
@@ -217,6 +228,105 @@ class ClientSessionTest {
         assertEquals("Steve", list.getPlayers().get(0).getName());
     }
 
+    /** Every frame from the hub reaches the listener method named after its type. */
+    @Test
+    void hubFramesReachTheListener() throws Exception {
+        accept();
+        String uuid = "069a79f4-44e9-4726-a5be-fca90e38aaf5";
+        hub(new S2CChatMessage("gtnh", "GTNH", 5, "Steve", uuid, "hi"));
+        hub(new S2CPlayerJoin("gtnh", "GTNH", 6, "Steve", uuid, 1));
+        hub(new S2CPlayerLeave("gtnh", "GTNH", 7, "Steve", uuid, 0));
+        hub(new S2CPlayerList("gtnh", "GTNH", 8, Collections.<PlayerInfo>emptyList()));
+        hub(new S2CServerStatus("gtnh", "GTNH", 9, ServerState.OFFLINE, "gold", "gtnh.example.net", 30,
+                Collections.<PlayerInfo>emptyList()));
+        hub(new S2CRunCommand("c1", "tps", "forge tps", Collections.<String>emptyList()));
+        hub(new S2CSystemMessage("Restart in 5 minutes", S2CSystemMessage.Kind.RESTART));
+        hub(new S2CMuteList(Collections.singletonList(uuid)));
+        hub(new S2CMute(uuid, true, "discord-1"));
+        sync();
+        assertEquals(Arrays.asList("chatMessage 5", "playerJoin 6", "playerLeave 7", "playerList 8", "serverStatus 9",
+                "runCommand", "systemMessage", "muteList", "mute"), listener.heard);
+    }
+
+    /** A reconnect tells the same hub what it last relayed here, so the hub can replay the rest. */
+    @Test
+    void reconnectSendsHubSessionAndLastRelayed() throws Exception {
+        accept();
+        hub(new S2CChatMessage("gtnh", "GTNH", 7, "Steve", "069a79f4-44e9-4726-a5be-fca90e38aaf5", "hi"));
+        reconnect(0);
+        C2SHandshake handshake = handshake(transport.sent.get(0));
+        assertEquals(1, handshake.getHubSession());
+        assertEquals(7, handshake.getLastRelayed());
+    }
+
+    /** A restarted hub numbers relayed frames from 1 again, so the old lastRelayed is forgotten. */
+    @Test
+    void restartedHubResetsLastRelayed() throws Exception {
+        accept();
+        hub(new S2CChatMessage("gtnh", "GTNH", 7, "Steve", "069a79f4-44e9-4726-a5be-fca90e38aaf5", "hi"));
+        session.onClose(1001, "");
+        session.onOpen();
+        hub(new S2CHandshakeAccepted(Protocol.VERSION, 2, 0, Collections.<S2CServerEntry>emptyList()));
+        reconnect(0);
+        C2SHandshake handshake = handshake(transport.sent.get(0));
+        assertEquals(2, handshake.getHubSession());
+        assertEquals(0, handshake.getLastRelayed());
+    }
+
+    @Test
+    void invalidFrameIsLoggedAndAnswered() throws Exception {
+        accept();
+        session.onFrame("{");
+        sync();
+        assertEquals("invalid_frame", lastProtocolError().getCode());
+        assertEquals(Collections.singletonList("warn"), listener.heard);
+        assertTrue(transport.closes.isEmpty());
+    }
+
+    @Test
+    void threeInvalidFramesInARowClose() throws Exception {
+        accept();
+        for (int i = 0; i < 3; i++) {
+            session.onFrame("{");
+        }
+        sync();
+        assertEquals("protocol_error", lastProtocolError().getCode());
+        assertEquals(Arrays.asList("warn", "warn", "error"), listener.heard);
+        assertEquals(Collections.singletonList(Protocol.CLOSE_PROTOCOL_ERROR), transport.closes);
+    }
+
+    /** Only three in a row close: a valid frame in between starts the count again. */
+    @Test
+    void validFrameResetsTheInvalidCount() throws Exception {
+        accept();
+        session.onFrame("{");
+        session.onFrame("{");
+        hub(new S2CAcknowledgement(1));
+        session.onFrame("{");
+        sync();
+        assertTrue(transport.closes.isEmpty());
+    }
+
+    @Test
+    void protocolErrorFromTheHubIsLogged() throws Exception {
+        accept();
+        hub(new ProtocolError("invalid_frame", "missing field seq"));
+        sync();
+        assertEquals(Collections.singletonList("warn"), listener.heard);
+        assertTrue(transport.closes.isEmpty());
+    }
+
+    /** The last frame sent, which must be a protocolError. */
+    private ProtocolError lastProtocolError() throws ProtocolException {
+        return assertInstanceOf(ProtocolError.class,
+                PayloadCodec.C2S.decode(transport.sent.get(transport.sent.size() - 1)));
+    }
+
+    /** Hands the session a frame as if the hub sent it. */
+    private void hub(Payload payload) {
+        session.onFrame(PayloadCodec.encode(payload));
+    }
+
     /** Opens the connection and accepts it, as a hub with nothing to resend or list would. */
     private void accept() {
         session.onOpen();
@@ -231,7 +341,10 @@ class ClientSessionTest {
         }
     }
 
-    /** Drops the connection, forgets what was sent so far, and reconnects to a hub that has up to lastSeq. */
+    /**
+     * Drops the connection, forgets what was sent so far, and reconnects to a hub (session 1) that has up to lastSeq.
+     * Waits for the session, so transport.sent then holds the new handshake first.
+     */
     private void reconnect(long lastSeq) throws Exception {
         session.onClose(1006, "");
         sync();
@@ -239,6 +352,7 @@ class ClientSessionTest {
         session.onOpen();
         session.onFrame(PayloadCodec.encode(new S2CHandshakeAccepted(Protocol.VERSION, 1, lastSeq,
                 Collections.<S2CServerEntry>emptyList())));
+        sync();
     }
 
     /** Every event sent so far, as "type seq", leaving out the handshake. */
@@ -289,10 +403,71 @@ class ClientSessionTest {
     /** Records what the session hands the mod. Written on the session's thread, read after {@link #sync}. */
     private static final class RecordingListener implements MessageListener {
         List<S2CServerEntry> servers;
+        /** Every other frame handed over, as its type, plus " seq" for a relayed frame; "warn" or "error" for a log. */
+        final List<String> heard = new ArrayList<>();
 
         @Override
         public void servers(List<S2CServerEntry> servers) {
             this.servers = servers;
+        }
+
+        @Override
+        public void chatMessage(S2CChatMessage message) {
+            relayed(message);
+        }
+
+        @Override
+        public void playerJoin(S2CPlayerJoin message) {
+            relayed(message);
+        }
+
+        @Override
+        public void playerLeave(S2CPlayerLeave message) {
+            relayed(message);
+        }
+
+        @Override
+        public void playerList(S2CPlayerList message) {
+            relayed(message);
+        }
+
+        @Override
+        public void serverStatus(S2CServerStatus message) {
+            relayed(message);
+        }
+
+        @Override
+        public void runCommand(S2CRunCommand message) {
+            heard.add(message.type());
+        }
+
+        @Override
+        public void systemMessage(S2CSystemMessage message) {
+            heard.add(message.type());
+        }
+
+        @Override
+        public void muteList(S2CMuteList message) {
+            heard.add(message.type());
+        }
+
+        @Override
+        public void mute(S2CMute message) {
+            heard.add(message.type());
+        }
+
+        @Override
+        public void warn(String message) {
+            heard.add("warn");
+        }
+
+        @Override
+        public void error(String message) {
+            heard.add("error");
+        }
+
+        private void relayed(S2CRelayed message) {
+            heard.add(message.type() + " " + message.getSeq());
         }
     }
 }

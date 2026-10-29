@@ -59,4 +59,14 @@ public interface MessageListener {
     /** One player was muted or unmuted. */
     default void mute(S2CMute message) {
     }
+
+    /** Something went wrong but the session carries on. Prints to stderr unless the mod sends it to its logger. */
+    default void warn(String message) {
+        System.err.println("[polychat] " + message);
+    }
+
+    /** Something the server's admin must fix, or that closed the connection. Prints to stderr by default. */
+    default void error(String error) {
+        System.err.println("[polychat] ERROR " + error);
+    }
 }

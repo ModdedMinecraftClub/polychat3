@@ -10,6 +10,7 @@ import club.moddedminecraft.polychat3.core.Protocol;
 import club.moddedminecraft.polychat3.core.payloads.Payload;
 import club.moddedminecraft.polychat3.core.payloads.PayloadCodec;
 import club.moddedminecraft.polychat3.core.payloads.PlayerInfo;
+import club.moddedminecraft.polychat3.core.payloads.ProtocolError;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolException;
 import club.moddedminecraft.polychat3.core.payloads.ServerState;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SChatMessage;
@@ -22,7 +23,17 @@ import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerLeave;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerList;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SServerStatus;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CAcknowledgement;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CChatMessage;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMute;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerJoin;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerLeave;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerList;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CRelayed;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CRunCommand;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerStatus;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CSystemMessage;
 
 /**
  * The client side of the protocol, between the mod's {@link Transport} and its {@link MessageListener}, as in
@@ -50,7 +61,8 @@ public final class ClientSession {
     private ServerState state = ServerState.STARTING;
     // True once this connection's handshakeAccepted arrived
     private boolean accepted;
-    // From the last handshakeAccepted; sent back on reconnect (replay comes in step 4)
+    // The hub session from the last handshakeAccepted, and the highest relay seq received since. Sent back in the
+    // next handshake so the same hub can replay what this server missed
     private long hubSession;
     private long lastRelayed;
 
@@ -60,6 +72,9 @@ public final class ClientSession {
     private final ArrayDeque<C2SEvent> unacked = new ArrayDeque<>();
     // The seq of the last event built, 0 before the first
     private long seq;
+    // Invalid frames from the hub in a row on this connection; the third closes it, as in PROTOCOL.md "Errors"
+    private static final int MAX_INVALID_FRAMES = 3;
+    private int invalidFrames;
 
     /**
      * @param server this game server's id.
@@ -105,34 +120,65 @@ public final class ClientSession {
     public void onOpen() {
         thread.execute(() -> {
             accepted = false;
+            invalidFrames = 0;
             transport.send(PayloadCodec.encode(new C2SHandshake(Protocol.VERSION, server, name, token, session, state,
                     colour, address, maxPlayers, hubSession, lastRelayed)));
         });
     }
 
-    /** The transport received a text frame from the hub. */
+    /**
+     * The transport received a text frame from the hub. An invalid one is logged and answered with
+     * {@code protocolError}; the third in a row closes the connection with 4005.
+     */
     public void onFrame(String frame) {
         thread.execute(() -> {
             Payload payload;
             try {
                 payload = PayloadCodec.S2C.decode(frame);
             } catch (ProtocolException e) {
-                // Invalid frames are counted and answered in step 4
+                if (++invalidFrames >= MAX_INVALID_FRAMES) {
+                    listener.error(
+                            MAX_INVALID_FRAMES + " invalid frames in a row from hub, closing: " + e.getMessage());
+                    transport.send(PayloadCodec.encode(new ProtocolError("protocol_error",
+                            MAX_INVALID_FRAMES + " invalid frames in a row, last: " + e.getMessage())));
+                    transport.close(Protocol.CLOSE_PROTOCOL_ERROR);
+                } else {
+                    listener.warn("invalid frame from hub: " + e.getMessage());
+                    transport.send(PayloadCodec.encode(new ProtocolError("invalid_frame", e.getMessage())));
+                }
                 return;
             }
+            invalidFrames = 0;
             if (payload instanceof S2CHandshakeAccepted) {
                 S2CHandshakeAccepted handshakeAccepted = (S2CHandshakeAccepted) payload;
                 accepted = true;
+                if (handshakeAccepted.getSession() != hubSession) {
+                    // A restarted hub numbers its relayed frames from 1 again
+                    lastRelayed = 0;
+                }
                 hubSession = handshakeAccepted.getSession();
                 // Resend what the hub missed, oldest first, then the players, as in PROTOCOL.md "Handshake"
                 acknowledged(handshakeAccepted.getLastSeq());
-                for (C2SEvent event : unacked){
+                for (C2SEvent event : unacked) {
                     transport.send(PayloadCodec.encode(event));
                 }
                 send(new C2SPlayerList(++seq, players.get()));
                 listener.servers(handshakeAccepted.getServers());
             } else if (payload instanceof S2CAcknowledgement) {
                 acknowledged(((S2CAcknowledgement) payload).getSeq());
+            } else if (payload instanceof S2CRelayed) {
+                relayed((S2CRelayed) payload);
+            } else if (payload instanceof S2CRunCommand) {
+                listener.runCommand((S2CRunCommand) payload);
+            } else if (payload instanceof S2CSystemMessage) {
+                listener.systemMessage((S2CSystemMessage) payload);
+            } else if (payload instanceof S2CMuteList) {
+                listener.muteList((S2CMuteList) payload);
+            } else if (payload instanceof S2CMute) {
+                listener.mute((S2CMute) payload);
+            } else if (payload instanceof ProtocolError) {
+                ProtocolError error = (ProtocolError) payload;
+                listener.warn("hub sent " + error.getCode() + ": " + error.getMessage());
             }
         });
     }
@@ -199,6 +245,22 @@ public final class ClientSession {
     private void acknowledged(long upTo){
         while(!(unacked.isEmpty()) && unacked.peekFirst().getSeq() <= upTo){
             unacked.removeFirst();
+        }
+    }
+
+    /** Remembers the frame's relay seq for the next handshake, then hands it to the listener. */
+    private void relayed(S2CRelayed frame) {
+        lastRelayed = frame.getSeq();
+        if (frame instanceof S2CChatMessage) {
+            listener.chatMessage((S2CChatMessage) frame);
+        } else if (frame instanceof S2CPlayerJoin) {
+            listener.playerJoin((S2CPlayerJoin) frame);
+        } else if (frame instanceof S2CPlayerLeave) {
+            listener.playerLeave((S2CPlayerLeave) frame);
+        } else if (frame instanceof S2CPlayerList) {
+            listener.playerList((S2CPlayerList) frame);
+        } else if (frame instanceof S2CServerStatus) {
+            listener.serverStatus((S2CServerStatus) frame);
         }
     }
 
