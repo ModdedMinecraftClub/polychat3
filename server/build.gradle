@@ -21,8 +21,16 @@ dependencies {
     // core's plain jar is disabled; use its shaded jar
     implementation project(path: ':core', configuration: 'shadowRuntimeElements')
     implementation 'org.java-websocket:Java-WebSocket:1.6.0'
+    implementation 'com.google.code.gson:gson:2.15.0'
     // Java-WebSocket logs through SLF4J; this prints its logs and ours to stderr
     runtimeOnly 'org.slf4j:slf4j-simple:2.0.13'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.13.4'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
 }
 
 // Apply a specific Java toolchain to ease working on different environments.

@@ -168,7 +168,11 @@ Minecraft UUID. Everything else is a string or an array.
   restarts. Staff change it in game (c2s `mute`) or through a hub module such
   as Discord.
 - On every change the hub sends `mute` to every connected server, including the
-  one the change came from.
+  one the change came from. A `mute` that changes nothing (muting a player who
+  is already muted) sends nothing. `muteList` and s2c `mute` carry UUIDs in
+  lowercase.
+- The hub ignores a `mute` whose `target` is not a dashed UUID. It still
+  acknowledges it and logs it.
 - The client keeps its copy from `muteList` and `mute`, and stops a muted
   player's chat on its own server.
 - The hub also drops a `chatMessage` whose `senderId` is muted, in case a

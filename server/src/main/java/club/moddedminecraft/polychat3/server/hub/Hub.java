@@ -1,8 +1,9 @@
 package club.moddedminecraft.polychat3.server.hub;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -17,10 +18,13 @@ import club.moddedminecraft.polychat3.core.payloads.Payload;
 import club.moddedminecraft.polychat3.core.payloads.PayloadCodec;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolError;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolException;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SChatMessage;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SEvent;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SMute;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CAcknowledgement;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMute;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CRelayed;
 import club.moddedminecraft.polychat3.server.net.Connection;
@@ -28,7 +32,7 @@ import club.moddedminecraft.polychat3.server.net.Connection;
 /**
  * The core of the polychat server. Every event from the endpoint runs on one thread here, so the hub's
  * state needs no locks. Accepts or refuses each connection's handshake, then acknowledges its events and relays
- * them to the other game servers, as described in PROTOCOL.md.
+ * them to the other game servers, and keeps the network's mute list, as described in PROTOCOL.md.
  */
 public final class Hub {
     private static final Logger LOG = LoggerFactory.getLogger(Hub.class);
@@ -46,6 +50,8 @@ public final class Hub {
     private final Relay relay = new Relay();
     /** Each game server's details, state and players, as of its latest handshake and events. */
     private final Roster roster = new Roster();
+    /** Who is muted across the network, saved to a file on every change. */
+    private final Mutes mutes;
     /** The hub thread. Everything the hub does runs on it. */
     private final ScheduledExecutorService thread = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread hubThread = new Thread(runnable, "polychat-hub");
@@ -54,9 +60,15 @@ public final class Hub {
         return hubThread;
     });
 
-    /** @param token the shared {@code server_token} every client must send in its handshake. */
-    public Hub(String token) {
+    /**
+     * @param token the shared {@code server_token} every client must send in its handshake.
+     * @param mutesFile where the mute list is kept; a missing file means nobody is muted.
+     * @throws IOException if the mute list can't be read.
+     */
+    public Hub(String token, Path mutesFile) throws IOException {
         this.token = token.getBytes(StandardCharsets.UTF_8);
+        this.mutes = new Mutes(mutesFile);
+        mutes.load();
     }
 
     /** A socket opened. Starts the handshake timeout. */
@@ -123,8 +135,8 @@ public final class Hub {
         connection.close(closeCode);
     }
 
-    /** Sends a relayed frame to every active game server except origin. */
-    private void broadcast(S2CRelayed frame, Connection origin) {
+    /** Sends a frame to every active game server except origin, or to every one if origin is null. */
+    private void broadcast(Payload frame, Connection origin) {
         for (Connection other : servers.values()) {
             if (other != origin && other.getState() == Connection.State.ACTIVE) {
                 other.send(frame);
@@ -169,14 +181,51 @@ public final class Hub {
         }
         C2SEvent event = (C2SEvent) payload;
         String id = connection.getHandshake().getServer();
-        if (sequences.accept(id, event.getSeq())) {
+        if (sequences.accept(id, event.getSeq()) && !mutedChat(id, event)) {
             roster.update(id, event);
             S2CRelayed relayed = relay.relayed(roster.entry(id), event);
             if (relayed != null) {
                 broadcast(relayed, connection);
             }
+            if (event instanceof C2SMute) {
+                mute(id, (C2SMute) event);
+            }
         }
         connection.send(new S2CAcknowledgement(sequences.last(id)));
+    }
+
+    /**
+     * A staff member muted or unmuted a player, as in PROTOCOL.md "Mutes". A change goes to every game server,
+     * including the one it came from.
+     */
+    private void mute(String id, C2SMute event) {
+        String target;
+        try {
+            target = Mutes.normalise(event.getTarget());
+            if (mutes.set(target, event.isMuted())) {
+                LOG.info("{} {} {} on {}", event.getBy(), event.isMuted() ? "muted" : "unmuted", target, id);
+                broadcast(new S2CMute(target, event.isMuted(), event.getBy()), null);
+            }
+        } catch (IllegalArgumentException e) {
+            LOG.warn("Ignoring a mute from {}: target {} is not a UUID", id, event.getTarget());
+        }
+    }
+
+    /**
+     * @return true if event is chat from a muted player, which the hub logs and doesn't relay, as in PROTOCOL.md
+     * "Mutes". It means the client's copy of the mute list is behind.
+     */
+    private boolean mutedChat(String id, C2SEvent event) {
+        if (!(event instanceof C2SChatMessage)) {
+            return false;
+        }
+        C2SChatMessage chat = (C2SChatMessage) event;
+        if (!(mutes.isMuted(chat.getSenderId()))) {
+            return false;
+        }
+        LOG.info("Dropped chat from muted {} ({}) on {}: {}", chat.getPlayer(), chat.getSenderId(), id,
+                chat.getMessage());
+        return true;
     }
 
     /** The first frame. Accepts or refuses the handshake, as in PROTOCOL.md "Handshake". */
@@ -229,8 +278,8 @@ public final class Hub {
                 connection.send(missed);
             }
         }
-        // No mute list is kept yet either
-        connection.send(new S2CMuteList(Collections.emptyList()));
+        // Replaces the client's copy, so it can stop a muted player's chat on its own server
+        connection.send(new S2CMuteList(mutes.list()));
         LOG.info("{} ({}) connected from {}", id, handshake.getName(), connection.remoteAddress());
     }
 }

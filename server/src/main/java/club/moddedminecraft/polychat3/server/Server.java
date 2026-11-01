@@ -22,7 +22,16 @@ public class Server {
             System.exit(1);
         }
 
-        Hub hub = new Hub(config.getToken());
+        Hub hub;
+        try {
+            hub = new Hub(config.getToken(), Paths.get("config/polychat-mutes.json"));
+        } catch (IOException e) {
+            // A broken mute list would be wiped by the next save, so don't start without it
+            System.err.println("Can't load mutes: " + e.getMessage());
+            System.exit(1);
+            return;
+        }
+
         WebSocketEndpoint endpoint = new WebSocketEndpoint(config.getPort(), hub);
         // Closes every connection with 1001, so game servers know to reconnect
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
