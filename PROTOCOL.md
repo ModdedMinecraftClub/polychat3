@@ -274,6 +274,8 @@ including a new type, bumps it by one in the next release.
   timer, so it stops when the game thread hangs.
   If the hub sees no `heartbeat` or event for 45 s, it marks the
   server `unresponsive` and relays that `serverStatus`. The socket stays open.
+  Only a `started` or `stopping` server is marked: one in `starting` sends no
+  heartbeat while it loads, which for a modded server can take minutes.
   The next heartbeat or event restores the last state the client reported.
 
 ## Close codes

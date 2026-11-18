@@ -38,6 +38,8 @@ public final class Hub {
     private static final Logger LOG = LoggerFactory.getLogger(Hub.class);
     private static final long HANDSHAKE_TIMEOUT_SECONDS = 5;
     private static final int MAX_INVALID_FRAMES = 3;
+    /** How often the hub looks for servers that went quiet. */
+    private static final long QUIET_CHECK_SECONDS = 5;
 
     private final byte[] token;
     /** Sent in {@code handshakeAccepted}, so clients know a restarted hub has nothing to replay. */
@@ -69,6 +71,8 @@ public final class Hub {
         this.token = token.getBytes(StandardCharsets.UTF_8);
         this.mutes = new Mutes(mutesFile);
         mutes.load();
+        thread.scheduleAtFixedRate(logged(this::checkQuiet), QUIET_CHECK_SECONDS, QUIET_CHECK_SECONDS,
+                TimeUnit.SECONDS);
     }
 
     /** A socket opened. Starts the handshake timeout. */
@@ -158,7 +162,8 @@ public final class Hub {
     /**
      * A frame after the handshake. Acknowledges every event, as in PROTOCOL.md "Sequence numbers,
      * acknowledgements and replay". An event that isn't a duplicate is first relayed to every other game server.
-     * Closes the connection after too many invalid frames in a row.
+     * Any valid frame counts as hearing from the server and brings an {@code unresponsive} one back. Closes the
+     * connection after too many invalid frames in a row.
      */
     private void receive(Connection connection, String frame) {
         Payload payload;
@@ -175,12 +180,15 @@ public final class Hub {
             return;
         }
         connection.validFrame();
+        String id = connection.getHandshake().getServer();
+        if (roster.heard(id, System.nanoTime())) {
+            broadcast(relay.status(roster.entry(id)), connection);
+        }
         if (!(payload instanceof C2SEvent)) {
             // heartbeat and protocolError aren't events, so no ack
             return;
         }
         C2SEvent event = (C2SEvent) payload;
-        String id = connection.getHandshake().getServer();
         if (sequences.accept(id, event.getSeq()) && !mutedChat(id, event)) {
             roster.update(id, event);
             S2CRelayed relayed = relay.relayed(roster.entry(id), event);
@@ -192,6 +200,18 @@ public final class Hub {
             }
         }
         connection.send(new S2CAcknowledgement(sequences.last(id)));
+    }
+
+    /**
+     * Runs every {@link #QUIET_CHECK_SECONDS} on the hub thread. Marks each server that sent no frame for
+     * {@link Roster#QUIET_SECONDS} {@code unresponsive}, as in PROTOCOL.md "Keepalive", and tells the other game
+     * servers.
+     */
+    private void checkQuiet() {
+        for (String id : roster.unresponsive(System.nanoTime())) {
+            LOG.warn("{} unresponsive: no frame for {} s", id, Roster.QUIET_SECONDS);
+            broadcast(relay.status(roster.entry(id)), servers.get(id));
+        }
     }
 
     /**
@@ -261,7 +281,7 @@ public final class Hub {
 
         connection.setHandshake(handshake);
         connection.setState(Connection.State.ACTIVE);
-        roster.connected(handshake);
+        roster.connected(handshake, System.nanoTime());
         Connection old = servers.put(id, connection);
         if (old != null) {
             refuse(old, Protocol.CLOSE_REPLACED, "replaced", "replaced by a newer connection for " + id);
