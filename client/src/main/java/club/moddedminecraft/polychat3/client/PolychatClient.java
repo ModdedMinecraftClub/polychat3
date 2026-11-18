@@ -47,6 +47,8 @@ public class PolychatClient extends GoAgnosticMod{
     private static final long PLAYER_LIST_NANOS = TimeUnit.MINUTES.toNanos(5);
     /** System.nanoTime() of the last player list; the session sent one with the handshake. Game thread only. */
     private long lastPlayerList = System.nanoTime();
+    private final GameThread gameThread;
+
     public PolychatClient(String modName, String modId, Logger logger) throws Exception {
         super(modName, modId, logger);
 
@@ -61,9 +63,11 @@ public class PolychatClient extends GoAgnosticMod{
 
         // The wire wants the Minecraft colour name, dark_blue, not the enum name, DARK_BLUE
         String colour = CONFIG.getColour().name().toLowerCase(Locale.ROOT);
+
+        gameThread = new GameThread(logger);
         session = new ClientSession(CONFIG.getServerId(), CONFIG.getName(), CONFIG.getToken(), colour,
-                CONFIG.getAddress(), CONFIG.getMaxPlayers(), transport, new PolychatListener(logger),
-                () -> new ArrayList<>(players.values()));
+                CONFIG.getAddress(), CONFIG.getMaxPlayers(), transport, new PolychatListener(logger, gameThread),
+                        () -> new ArrayList<>(players.values()));
 
         // The transport and the session each need the other, so the session goes in after both exist
         transport.setSession(session);
@@ -93,6 +97,7 @@ public class PolychatClient extends GoAgnosticMod{
 
     @Override
     public void serverTick() {
+        gameThread.runAll();
         long now = System.nanoTime();
         if (now - lastHeartbeat > HEARTBEAT_NANOS) {
             lastHeartbeat = now;
