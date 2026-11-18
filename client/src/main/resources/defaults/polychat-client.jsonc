@@ -3,8 +3,10 @@
     "name" : "A Minecraft Server",
     //The address of this server
     "address" : "example.com",
-    //The ID of this server
-    "serverId" : "ID",
+    //The ID of this server: 1 to 16 lowercase letters, digits, _ or -, for example a5 or gtnh
+    "serverId" : "a5",
+    //The most players this server allows, shown by /online
+    "maxPlayers" : 20,
     //The colour that will be used ingame to separate this server from other servers
     //See https://github.com/HeatherComputer/Go-Agnostic/blob/01b81aeb456073bbe1e87269a36f2184b2d14633/api/src/main/java/computer/heather/goagnostic/api/util/chat/ChatSymbols.java#L22 for colours
     "colour" : "WHITE",

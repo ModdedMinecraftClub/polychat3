@@ -1,5 +1,7 @@
 package club.moddedminecraft.polychat3.client.config;
 
+import club.moddedminecraft.polychat3.core.Protocol;
+
 import computer.heather.goagnostic.api.util.chat.ChatSymbols.Colour;
 
 public class PolychatClientConfig {
@@ -7,6 +9,7 @@ public class PolychatClientConfig {
     private String name;
     private String address;
     private String serverId;
+    private int maxPlayers;
 
     private Colour colour;
 
@@ -24,6 +27,10 @@ public class PolychatClientConfig {
     }
     public String getServerId() {
         return serverId;
+    }
+
+    public int getMaxPlayers() {
+        return maxPlayers;
     }
     public Colour getColour() {
         return colour;
@@ -43,7 +50,11 @@ public class PolychatClientConfig {
         //Validate everything
         if (getName() == null || getName().isEmpty()) throw new IllegalArgumentException("Server name must be set!");
         if (getAddress() == null || getAddress().isEmpty()) throw new IllegalArgumentException("Server address must be set!");
-        if (getServerId() == null || getServerId().isEmpty()) throw new IllegalArgumentException("Server ID must be set!");
+        if (getServerId() == null || !Protocol.SERVER_ID.matcher(getServerId()).matches())
+            throw new IllegalArgumentException(
+                    "Server ID must be 1 to 16 lowercase letters, digits, _ or -, is " + getServerId());
+        if (getMaxPlayers() < 1)
+            throw new IllegalArgumentException("Max players must be at least 1!");
         if (getColour() == null) throw new IllegalArgumentException("Colour must be set!");
         
         if (getServerAddress() == null || getServerAddress().isEmpty()) throw new IllegalArgumentException("Server/hub address must be set!");
