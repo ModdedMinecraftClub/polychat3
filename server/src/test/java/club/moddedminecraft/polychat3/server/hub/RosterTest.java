@@ -7,14 +7,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 
+import club.moddedminecraft.polychat3.core.payloads.PlayerInfo;
 import club.moddedminecraft.polychat3.core.payloads.ServerState;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerJoin;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerList;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SServerStatus;
 
-/** The {@code unresponsive} rules from PROTOCOL.md "Keepalive", with made-up {@code now} values. */
+/** The {@code unresponsive} rules from PROTOCOL.md "Keepalive", with made-up {@code now} values, and the player list. */
 class RosterTest {
     /** Any start time works: {@link Roster} only ever subtracts two times. */
     private static final long T0 = 1_000_000_000L;
@@ -94,6 +98,17 @@ class RosterTest {
         roster.connected(handshake("a", ServerState.STARTED), nearMax);
         assertEquals(Collections.emptyList(), roster.unresponsive(nearMax + seconds(20)), "wrapped, 20 s later");
         assertEquals(Collections.singletonList("a"), roster.unresponsive(nearMax + QUIET + 1));
+    }
+
+    @Test
+    void joinOfAPlayerAlreadyListedKeepsOneEntry() {
+        // A mod's playerList can already hold the player whose playerJoin goes out after it
+        String alex = "069a79f4-44e9-4726-a5be-fca90e38aaf5";
+        roster.connected(handshake("a", ServerState.STARTED), T0);
+        roster.update("a", new C2SPlayerList(1, Collections.singletonList(new PlayerInfo("Alex", alex))));
+        roster.update("a", new C2SPlayerJoin(2, "Alex", alex, 1));
+        assertEquals(Collections.singletonList(alex),
+                roster.entry("a").getPlayers().stream().map(PlayerInfo::getUuid).collect(Collectors.toList()));
     }
 
     private static C2SHandshake handshake(String id, ServerState state) {

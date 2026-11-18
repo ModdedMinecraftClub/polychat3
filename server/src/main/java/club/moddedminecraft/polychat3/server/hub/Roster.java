@@ -41,7 +41,8 @@ final class Roster {
 
     /**
      * Applies a new, not duplicate, event: {@code playerList} replaces the players, {@code playerJoin} and
-     * {@code playerLeave} change them, {@code serverStatus} sets the state. Other events change nothing.
+     * {@code playerLeave} change them, {@code serverStatus} sets the state. Other events change nothing. A
+     * {@code playerJoin} for a uuid already listed replaces that entry, so a player is never listed twice.
      *
      * @throws IllegalStateException if {@link #connected} never saw this id.
      */
@@ -52,6 +53,7 @@ final class Roster {
             entry.players = new ArrayList<>(list.getPlayers());
         } else if (event instanceof C2SPlayerJoin) {
             C2SPlayerJoin join = (C2SPlayerJoin) event;
+            entry.players.removeIf(p -> p.getUuid().equals(join.getUuid()));
             entry.players.add(new PlayerInfo(join.getPlayer(), join.getUuid()));
         } else if (event instanceof C2SPlayerLeave) {
             C2SPlayerLeave leave = (C2SPlayerLeave) event;
