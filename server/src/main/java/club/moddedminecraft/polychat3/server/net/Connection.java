@@ -1,14 +1,20 @@
 package club.moddedminecraft.polychat3.server.net;
 
+import java.nio.charset.StandardCharsets;
+
 import org.java_websocket.WebSocket;
 import org.java_websocket.exceptions.WebsocketNotConnectedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import club.moddedminecraft.polychat3.core.Protocol;
 import club.moddedminecraft.polychat3.core.payloads.Payload;
 import club.moddedminecraft.polychat3.core.payloads.PayloadCodec;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
 
 /** One client's socket and what the hub knows about it. */
 public final class Connection {
+    private static final Logger LOG = LoggerFactory.getLogger(Connection.class);
 
     /** Where a connection is in its life. Only the hub thread changes it. */
     public enum State {
@@ -31,10 +37,20 @@ public final class Connection {
         this.websocket = websocket;
     }
 
-    /** Encodes and sends a frame. Does nothing if the socket has closed. */
+    /**
+     * Encodes and sends a frame. Does nothing if the socket has closed. A frame over {@link Protocol#MAX_FRAME_BYTES}
+     * is logged and not sent: the client would close with 1009, reconnect and get the same frame again.
+     */
     public void send(Payload payload) {
+        String frame = PayloadCodec.encode(payload);
+        int bytes = frame.getBytes(StandardCharsets.UTF_8).length;
+        if (bytes > Protocol.MAX_FRAME_BYTES) {
+            LOG.error("Not sending {} to {}: {} bytes is over the {} byte limit", payload.type(), describe(), bytes,
+                    Protocol.MAX_FRAME_BYTES);
+            return;
+        }
         try {
-            websocket.send(PayloadCodec.encode(payload));
+            websocket.send(frame);
         } catch (WebsocketNotConnectedException e) {
             // Closed since caller checked; close callback will handle cleanup
         }

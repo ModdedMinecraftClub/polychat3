@@ -117,6 +117,22 @@ class ClientSessionTest {
                 PayloadCodec.encode(new S2CHandshakeAccepted(Protocol.VERSION, 0, 0, listener.servers)));
     }
 
+    /** A mod bug, here a players supplier that throws, is reported to listener.error and the session keeps going. */
+    @Test
+    void taskThatThrowsGoesToListenerError() throws Exception {
+        ClientSession broken = new ClientSession("a5", "All the Mods 5", "secret", "yellow", "a5.example.net", 40,
+                transport, listener, () -> {
+                    throw new IllegalStateException("players read off the game thread");
+                }, thread);
+        broken.onOpen();
+        broken.onFrame(PayloadCodec.encode(new S2CHandshakeAccepted(Protocol.VERSION, 1, 0,
+                Collections.<S2CServerEntry>emptyList())));
+        broken.heartbeat();
+        sync();
+        assertEquals(Collections.singletonList("error"), listener.heard);
+        assertTrue(transport.sent.get(transport.sent.size() - 1).contains("\"heartbeat\""), "still sending");
+    }
+
     /** An invalid frame doesn't stop the session: a valid frame after it still works. */
     @Test
     void invalidFrameDoesNotStopTheSession() throws Exception {

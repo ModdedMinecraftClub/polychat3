@@ -17,5 +17,10 @@ public enum ServerState {
      */
     @SerializedName("offline") OFFLINE,
     /** Set by the hub when heartbeats stop; a client never sends it. */
-    @SerializedName("unresponsive") UNRESPONSIVE
+    @SerializedName("unresponsive") UNRESPONSIVE;
+
+    /** @return true for {@code offline} and {@code unresponsive}, which only the hub sets; a client never sends them. */
+    public boolean hubOnly() {
+        return this == OFFLINE || this == UNRESPONSIVE;
+    }
 }

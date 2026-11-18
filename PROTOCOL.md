@@ -18,11 +18,12 @@ both ends must use the same version.
 - Field names are camelCase, the same as the Java fields. `type` is the class
   name in camelCase, without its `C2S` or `S2C` prefix: `C2SPlayerJoin` is
   `playerJoin`.
-- `Protocol.MAX_FRAME_BYTES` (65 536) is the largest encoded frame, in both
-  directions. Both ends pass it to Java-WebSocket's `Draft_6455`, which closes a
-  connection that receives a bigger frame with 1009. The library only checks
-  what it receives, so the sender keeps its own frames under the limit: the
-  client cuts `commandResult.output` and sets `truncated: true`.
+- `Protocol.MAX_FRAME_BYTES` (1 048 576, 1 MiB) is the largest encoded frame, in
+  both directions. Both ends pass it to Java-WebSocket's `Draft_6455`, which
+  closes a connection that receives a bigger frame with 1009. The library only
+  checks what it receives, so the sender keeps its own frames under the limit:
+  the client cuts `commandResult.output` and sets `truncated: true`, and the hub
+  logs an error and does not send a frame of its own that is too big.
 - One connection per game server for the life of its process. The client sends
   from one queue, so `seq` is monotonic on the wire.
 
@@ -83,7 +84,9 @@ would break the protocol.
 Minecraft UUID. Everything else is a string or an array.
 
 `state` is one of `starting`, `started`, `stopping`, `stopped`, `crashed`,
-`offline`, `unresponsive`. A client only sends the first five.
+`offline`, `unresponsive`. A client only sends the first five. The hub
+refuses a `handshake` with either of the last two (4000), and logs, acknowledges
+and otherwise ignores a `serverStatus` with one.
 
 ## Messages, client to hub (`c2s`)
 
@@ -104,7 +107,7 @@ Minecraft UUID. Everything else is a string or an array.
   - `session` is the process start time in ms, set once when the mod loads. A
     new value tells the hub the server restarted; the same value means a
     reconnect.
-  - `state` is `starting` or `started`.
+  - `state` is the last state the client sent, `starting` before the first.
   - `colour` is one of the 16 Minecraft colour names.
   - `address` and `maxPlayers` are shown by `/online`.
   - `hubSession` and `lastRelayed` ask the hub to replay what this server
@@ -199,8 +202,10 @@ client's log says why.
    2. the token matches the hub's `server_token`, which every server shares (4001);
    3. the version equals `Protocol.VERSION` (4002).
 4. If a live connection already has that id, the hub closes the old one with 4004.
-5. The hub answers `handshakeAccepted`, then replays what the client missed;
-   see "Replay to the client".
+5. The hub relays the server's `serverStatus` to every other server, so a
+   server they saw `offline` or `unresponsive`, or never saw, shows its
+   handshake state again. It answers `handshakeAccepted`, then replays what
+   the client missed; see "Replay to the client".
 6. The client resends its buffered events with `seq` above `lastSeq`, oldest
    first, then sends a fresh `playerList`.
 

@@ -22,6 +22,7 @@ import club.moddedminecraft.polychat3.core.payloads.c2s.C2SChatMessage;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SEvent;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SMute;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SServerStatus;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CAcknowledgement;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMute;
@@ -189,7 +190,7 @@ public final class Hub {
             return;
         }
         C2SEvent event = (C2SEvent) payload;
-        if (sequences.accept(id, event.getSeq()) && !mutedChat(id, event)) {
+        if (sequences.accept(id, event.getSeq()) && !mutedChat(id, event) && !hubOnlyStatus(id, event)) {
             roster.update(id, event);
             S2CRelayed relayed = relay.relayed(roster.entry(id), event);
             if (relayed != null) {
@@ -248,6 +249,23 @@ public final class Hub {
         return true;
     }
 
+    /**
+     * @return true if event is a {@code serverStatus} with a state only the hub sets, which the hub logs and
+     * doesn't apply or relay, as in PROTOCOL.md "Field types". It is still acknowledged, so the client stops
+     * resending it.
+     */
+    private boolean hubOnlyStatus(String id, C2SEvent event) {
+        if (!(event instanceof C2SServerStatus)) {
+            return false;
+        }
+        C2SServerStatus status = (C2SServerStatus) event;
+        if (!status.getState().hubOnly()) {
+            return false;
+        }
+        LOG.warn("Ignoring serverStatus {} from {}: only the hub sets it", status.getState(), id);
+        return true;
+    }
+
     /** The first frame. Accepts or refuses the handshake, as in PROTOCOL.md "Handshake". */
     private void handshake(Connection connection, String frame) {
         Payload payload;
@@ -265,6 +283,11 @@ public final class Hub {
 
         C2SHandshake handshake = (C2SHandshake) payload;
         String id = handshake.getServer();
+        if (handshake.getState().hubOnly()) {
+            refuse(connection, Protocol.CLOSE_BAD_HANDSHAKE, "bad_handshake",
+                    "client sent hub-only state " + handshake.getState());
+            return;
+        }
         if (!Protocol.SERVER_ID.matcher(id).matches()) {
             refuse(connection, Protocol.CLOSE_BAD_SERVER_ID, "bad_server_id", "invalid server id " + id);
             return;
@@ -286,6 +309,8 @@ public final class Hub {
         if (old != null) {
             refuse(old, Protocol.CLOSE_REPLACED, "replaced", "replaced by a newer connection for " + id);
         }
+        // The other servers last saw this one offline or unresponsive, or never saw it, as after a hub restart
+        broadcast(relay.status(roster.entry(id)), connection);
         // lastSeq lets the client resend what the hub missed; servers is every other game server's current
         // state
         connection

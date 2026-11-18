@@ -28,6 +28,8 @@ public final class WebSocketEndpoint extends WebSocketServer {
         this.hub = hub;
         // Lets a restarted hub bind while the old connections are still in TIME_WAIT
         setReuseAddr(true);
+        // PROTOCOL.md "Keepalive": ping every 30 s, close with 1006 if no pong within 45 s
+        setConnectionLostTimeout(30);
     }
 
     @Override

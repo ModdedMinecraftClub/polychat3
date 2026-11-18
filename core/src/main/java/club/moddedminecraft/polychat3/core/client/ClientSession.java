@@ -1,5 +1,7 @@
 package club.moddedminecraft.polychat3.core.client;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -134,17 +136,17 @@ public final class ClientSession {
 
     /** Opens the first connection. */
     public void start() {
-        thread.execute(transport::connect);
+        thread.execute(logged(transport::connect));
     }
 
     /** The transport's socket opened. Sends {@code handshake}. */
     public void onOpen() {
-        thread.execute(() -> {
+        thread.execute(logged(() -> {
             accepted = false;
             invalidFrames = 0;
             transport.send(PayloadCodec.encode(new C2SHandshake(Protocol.VERSION, server, name, token, session, state,
                     colour, address, maxPlayers, hubSession, lastRelayed)));
-        });
+        }));
     }
 
     /**
@@ -152,7 +154,7 @@ public final class ClientSession {
      * {@code protocolError}; the third in a row closes the connection with 4005.
      */
     public void onFrame(String frame) {
-        thread.execute(() -> {
+        thread.execute(logged(() -> {
             Payload payload;
             try {
                 payload = PayloadCodec.S2C.decode(frame);
@@ -202,7 +204,7 @@ public final class ClientSession {
                 ProtocolError error = (ProtocolError) payload;
                 listener.warn("hub sent " + error.getCode() + ": " + error.getMessage());
             }
-        });
+        }));
     }
 
     /**
@@ -212,7 +214,7 @@ public final class ClientSession {
      * @param code the close code, or -1 if the connection never opened.
      */
     public void onClose(int code, String reason) {
-        thread.execute(() -> {
+        thread.execute(logged(() -> {
             accepted = false;
             switch (code) {
                 case Protocol.CLOSE_NORMAL:
@@ -238,40 +240,40 @@ public final class ClientSession {
                     reconnectIn(delay);
                     break;
             }
-        });
+        }));
     }
 
     /** A player on this server said something in chat. */
     public void chatMessage(String player, String senderId, String message) {
-        thread.execute(() -> send(new C2SChatMessage(++seq, player, senderId, message)));
+        thread.execute(logged(() -> send(new C2SChatMessage(++seq, player, senderId, message))));
     }
 
     /** A player joined this server; online counts them. */
     public void playerJoin(String player, String uuid, int online) {
-        thread.execute(() -> send(new C2SPlayerJoin(++seq, player, uuid, online)));
+        thread.execute(logged(() -> send(new C2SPlayerJoin(++seq, player, uuid, online))));
     }
 
     /** A player left this server; online no longer counts them. */
     public void playerLeave(String player, String uuid, int online) {
-        thread.execute(() -> send(new C2SPlayerLeave(++seq, player, uuid, online)));
+        thread.execute(logged(() -> send(new C2SPlayerLeave(++seq, player, uuid, online))));
     }
 
     /** The answer to a {@code runCommand}. Never buffered, as PROTOCOL.md says. */
     public void commandResult(String id, boolean ok, String output, boolean truncated) {
-        thread.execute(() -> send(new C2SCommandResult(++seq, id, ok, output, truncated)));
+        thread.execute(logged(() -> send(new C2SCommandResult(++seq, id, ok, output, truncated))));
     }
 
     /** Staff on this server muted or unmuted a player. */
     public void mute(String target, boolean muted, String by) {
-        thread.execute(() -> send(new C2SMute(++seq, target, muted, by)));
+        thread.execute(logged(() -> send(new C2SMute(++seq, target, muted, by))));
     }
 
     /** This server's state changed. Also the state the next {@code handshake} carries. */
     public void serverStatus(ServerState state) {
-        thread.execute(() -> {
+        thread.execute(logged(() -> {
             this.state = state;
             send(new C2SServerStatus(++seq, state));
-        });
+        }));
     }
 
     /**
@@ -279,11 +281,11 @@ public final class ClientSession {
      * "Keepalive". Sent only while connected; never numbered or buffered.
      */
     public void heartbeat() {
-        thread.execute(() -> {
+        thread.execute(logged(() -> {
             if (accepted) {
                 transport.send(PayloadCodec.encode(new C2SHeartbeat()));
             }
-        });
+        }));
     }
 
     /**
@@ -295,22 +297,22 @@ public final class ClientSession {
      */
     public void stop(ServerState state) {
         CountDownLatch acked = new CountDownLatch(1);
-        thread.execute(() -> {
+        thread.execute(logged(() -> {
             this.state = state;
             send(new C2SServerStatus(++seq, state));
             stopSeq = seq;
             stopAcked = acked;
-        });
+        }));
         try {
             acked.await(STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             // Keep the interrupt for the caller; close anyway
             Thread.currentThread().interrupt();
         }
-        Future<?> closed = thread.submit(() -> {
+        Future<?> closed = thread.submit(logged(() -> {
             stopped = true;
             transport.close(Protocol.CLOSE_NORMAL);
-        });
+        }));
         try {
             // Return only once close was issued, or the JVM can exit before the daemon session thread runs it
             closed.get(CLOSE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -319,6 +321,22 @@ public final class ClientSession {
         } catch (ExecutionException | TimeoutException e) {
             // close threw, or the session thread is stuck; stop has nothing more it can do
         }
+    }
+
+    /**
+     * Wraps a session task so an exception, such as one thrown by the mod's listener or players supplier, goes to
+     * {@code listener.error} with its stack trace instead of being lost by the executor.
+     */
+    private Runnable logged(Runnable task) {
+        return () -> {
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                StringWriter trace = new StringWriter();
+                e.printStackTrace(new PrintWriter(trace));
+                listener.error("session task failed: " + trace.toString());
+            }
+        };
     }
 
     /**
@@ -351,11 +369,11 @@ public final class ClientSession {
 
     /** Opens a new connection after the delay, on the session's thread, unless the session stopped by then. */
     private void reconnectIn(long millis) {
-        thread.schedule(() -> {
+        thread.schedule(logged(() -> {
             if (!stopped) {
                 transport.connect();
             }
-        }, millis, TimeUnit.MILLISECONDS);
+        }), millis, TimeUnit.MILLISECONDS);
     }
 
     /** Remembers the frame's relay seq for the next handshake, then hands it to the listener. */

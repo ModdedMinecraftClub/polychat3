@@ -22,8 +22,8 @@ import club.moddedminecraft.polychat3.core.payloads.c2s.C2SServerStatus;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CAcknowledgement;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CChatMessage;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
-import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMute;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerJoin;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerLeave;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerList;
@@ -38,6 +38,8 @@ import club.moddedminecraft.polychat3.core.payloads.s2c.S2CSystemMessage;
  * {@link #encode(Payload)} works for any payload.
  */
 public final class PayloadCodec {
+    /** How much of a frame an error message quotes, so the protocolError it goes into stays far below MAX_FRAME_BYTES. */
+    private static final int QUOTED_CHARS = 200;
     private static final Gson GSON = new GsonBuilder()
             .disableHtmlEscaping() // keeps < and = one byte each
             .serializeNulls() // so a null field shows up, and is refused, instead of vanishing
@@ -112,15 +114,15 @@ public final class PayloadCodec {
         try {
             payload = GSON.fromJson(json, type);
         } catch (JsonParseException e) {
-            throw new ProtocolException("bad frame: " + frame, e);
+            throw new ProtocolException("bad frame: " + quote(frame), e);
         }
 
         // Gson is lenient: it ignores unknown fields, defaults missing ones and converts between types.
         // A frame that follows the protocol encodes back to the same JSON values as we received.
         JsonObject expected = toFrame(payload);
         if (hasNull(expected) || !expected.equals(json)) {
-            throw new ProtocolException("frame doesn't match its type: got " + frame
-                    + ", expected " + GSON.toJson(expected));
+            throw new ProtocolException("frame doesn't match its type: got " + quote(frame)
+                    + ", expected " + quote(GSON.toJson(expected)));
         }
         return payload;
     }
@@ -130,10 +132,10 @@ public final class PayloadCodec {
         try {
             json = GSON.fromJson(frame, JsonElement.class); // also refuses data after the value
         } catch (JsonParseException e) {
-            throw new ProtocolException("not JSON: " + frame, e);
+            throw new ProtocolException("not JSON: " + quote(frame), e);
         }
         if (!(json instanceof JsonObject)) { // null for an empty frame
-            throw new ProtocolException("not a JSON object: " + frame);
+            throw new ProtocolException("not a JSON object: " + quote(frame));
         }
         return (JsonObject) json;
     }
@@ -145,7 +147,7 @@ public final class PayloadCodec {
             payloadClass = types.get(type.getAsString());
         }
         if (payloadClass == null) {
-            throw new ProtocolException("missing or unknown type: " + type);
+            throw new ProtocolException("missing or unknown type: " + quote(String.valueOf(type)));
         }
         return payloadClass;
     }
@@ -167,5 +169,13 @@ public final class PayloadCodec {
             return element.getAsJsonArray().asList().stream().anyMatch(PayloadCodec::hasNull);
         }
         return element.isJsonNull();
+    }
+
+    /** @return string as it is if short, else its first {@link #QUOTED_CHARS} chars and "...". For error messages. */
+    private static String quote(String string) {
+        if (string.length() <= QUOTED_CHARS) {
+            return string;
+        }
+        return string.substring(0, QUOTED_CHARS) + "...";
     }
 }

@@ -9,7 +9,7 @@ public final class Protocol {
     /** Both ends must use exactly this version. Stays 1 until the first release, then goes up each release. */
     public static final int VERSION = 1;
     /** Largest encoded frame either side accepts, in bytes. */
-    public static final int MAX_FRAME_BYTES = 65536;
+    public static final int MAX_FRAME_BYTES = 1_048_576; // 1 MiB
     /** A valid server id: 1 to 16 lowercase letters, digits, {@code _} or {@code -}. */
     public static final Pattern SERVER_ID = Pattern.compile("[a-z0-9_-]{1,16}");
 

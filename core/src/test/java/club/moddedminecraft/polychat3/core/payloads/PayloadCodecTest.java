@@ -3,11 +3,13 @@ package club.moddedminecraft.polychat3.core.payloads;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -63,6 +65,24 @@ class PayloadCodecTest {
         String frame = "{\"type\":\"handshakeAccepted\",\"version\":1,\"session\":1,\"lastSeq\":0,\"servers\":[{\"id\":\"g\","
                 + "\"name\":\"G\",\"colour\":\"gold\",\"address\":\"a\",\"state\":\"started\",\"players\":[]}]}";
         assertThrows(ProtocolException.class, () -> PayloadCodec.S2C.decode(frame));
+    }
+
+    @Test
+    void errorMessagesQuoteOnlyTheStartOfABigFrame() {
+        // The message goes back in a protocolError, which must stay far below MAX_FRAME_BYTES
+        char[] filler = new char[100_000];
+        Arrays.fill(filler, 'x');
+        String big = new String(filler);
+        String[] frames = {
+                "{" + big,
+                "[\"" + big + "\"]",
+                "{\"type\":\"" + big + "\"}",
+                "{\"type\":\"chatMessage\",\"player\":\"p\",\"senderId\":\"u\",\"message\":\"" + big + "\",\"seq\":1,\"x\":1}",
+        };
+        for (String frame : frames) {
+            ProtocolException e = assertThrows(ProtocolException.class, () -> PayloadCodec.C2S.decode(frame));
+            assertTrue(e.getMessage().length() < 1000, "message is " + e.getMessage().length() + " chars");
+        }
     }
 
     @Test

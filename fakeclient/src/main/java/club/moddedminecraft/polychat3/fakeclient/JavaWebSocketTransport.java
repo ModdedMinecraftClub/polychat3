@@ -1,11 +1,15 @@
 package club.moddedminecraft.polychat3.fakeclient;
 
 import java.net.URI;
+import java.util.Collections;
 
 import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.drafts.Draft;
+import org.java_websocket.drafts.Draft_6455;
 import org.java_websocket.exceptions.WebsocketNotConnectedException;
 import org.java_websocket.handshake.ServerHandshake;
 
+import club.moddedminecraft.polychat3.core.Protocol;
 import club.moddedminecraft.polychat3.core.client.ClientSession;
 import club.moddedminecraft.polychat3.core.client.Transport;
 
@@ -14,6 +18,11 @@ import club.moddedminecraft.polychat3.core.client.Transport;
  * session, which does the work on its own thread.
  */
 public final class JavaWebSocketTransport implements Transport {
+    // PROTOCOL.md "Transport and framing": a frame over MAX_FRAME_BYTES closes the connection with 1009. Java-WebSocket
+    // copies the draft for every connection, so one instance serves them all
+    private static final Draft Draft_6455 = new Draft_6455(Collections.emptyList(),
+            Collections.singletonList(new org.java_websocket.protocols.Protocol("")),
+            Protocol.MAX_FRAME_BYTES);
     private final URI uri;
     // Set once, before the session starts
     private ClientSession session;
@@ -31,7 +40,7 @@ public final class JavaWebSocketTransport implements Transport {
 
     @Override
     public void connect() {
-        client = new WebSocketClient(uri) {
+        client = new WebSocketClient(uri, Draft_6455) {
             @Override
             public void onOpen(ServerHandshake handshake) {
                 session.onOpen();
