@@ -133,6 +133,20 @@ class ClientSessionTest {
         assertTrue(transport.sent.get(transport.sent.size() - 1).contains("\"heartbeat\""), "still sending");
     }
 
+    /** The mod's 5-minute playerList reads the same supplier as the one after handshakeAccepted, and isn't buffered. */
+    @Test
+    void playerListSendsTheCurrentPlayers() throws Exception {
+        accept();
+        online.add(new PlayerInfo("Steve", "069a79f4-44e9-4726-a5be-fca90e38aaf5"));
+        session.playerList();
+        assertEquals(Arrays.asList("playerList 1", "playerList 2"), eventsSent());
+        C2SPlayerList list = (C2SPlayerList) PayloadCodec.C2S.decode(transport.sent.get(transport.sent.size() - 1));
+        assertEquals("Steve", list.getPlayers().get(0).getName());
+        // Not buffered: a reconnect resends nothing, only the fresh list after handshakeAccepted
+        reconnect(0);
+        assertEquals(Collections.singletonList("playerList 3"), eventsSent());
+    }
+
     /** An invalid frame doesn't stop the session: a valid frame after it still works. */
     @Test
     void invalidFrameDoesNotStopTheSession() throws Exception {

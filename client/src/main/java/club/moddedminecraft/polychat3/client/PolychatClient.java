@@ -19,6 +19,7 @@ import computer.heather.goagnostic.api.annotations.Mod.Target;
 import computer.heather.goagnostic.api.baseclasses.GoAgnosticMod;
 import computer.heather.goagnostic.api.util.chat.ChatManager;
 import computer.heather.goagnostic.api.util.chat.ChatMessage;
+import computer.heather.goagnostic.api.util.player.Player;
 
 @Mod(modName = "Polychat3", modid = "polychat3", targets = { Target.NEO_1_21, Target.FORGE_1_12, Target.FORGE_1_7_10 }, 
     version = "1", group = "club moddedminecraft", authors = { "Heather White", "Edward Pratt" }, 
@@ -42,7 +43,10 @@ public class PolychatClient extends GoAgnosticMod{
      * something compared with each other. Game thread only.
      */
     private long lastHeartbeat = System.nanoTime();
-
+    /** PROTOCOL.md: the full player list every 5 minutes, so the hub's copy can't drift from the game's. */
+    private static final long PLAYER_LIST_NANOS = TimeUnit.MINUTES.toNanos(5);
+    /** System.nanoTime() of the last player list; the session sent one with the handshake. Game thread only. */
+    private long lastPlayerList = System.nanoTime();
     public PolychatClient(String modName, String modId, Logger logger) throws Exception {
         super(modName, modId, logger);
 
@@ -94,10 +98,28 @@ public class PolychatClient extends GoAgnosticMod{
             lastHeartbeat = now;
             session.heartbeat();
         }
+        if (now - lastPlayerList > PLAYER_LIST_NANOS) {
+            lastPlayerList = now;
+            session.playerList();
+        }
     }
 
-    public void onChat(ChatMessage message) {
+    @Override
+    public void playerJoin(Player player) {
+        players.put(player.getUUID(), new PlayerInfo(player.getName(), player.getUUID()));
+        session.playerJoin(player.getName(), player.getUUID(), players.size());
+    }
 
+    @Override
+    public void playerLeave(Player player) {
+        players.remove(player.getUUID());
+        session.playerLeave(player.getName(), player.getUUID(), players.size());
+    }
+
+    /** A player on this server chatted. Go!Agnostic's ChatManager calls it on the game thread. */
+    public void onChat(ChatMessage message) {
+        Player sender = message.getSender();
+        session.chatMessage(sender.getName(), sender.getUUID(), message.getText());
     }
 
 

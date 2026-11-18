@@ -258,6 +258,14 @@ public final class ClientSession {
         thread.execute(logged(() -> send(new C2SPlayerLeave(++seq, player, uuid, online))));
     }
 
+    /**
+     * Sends this server's full player list, from the players supplier. The mod calls it every 5 minutes, as in
+     * PROTOCOL.md; the session also sends one after every {@code handshakeAccepted}. Never buffered.
+     */
+    public void playerList() {
+        thread.execute(logged(() -> send(new C2SPlayerList(++seq, players.get()))));
+    }
+
     /** The answer to a {@code runCommand}. Never buffered, as PROTOCOL.md says. */
     public void commandResult(String id, boolean ok, String output, boolean truncated) {
         thread.execute(logged(() -> send(new C2SCommandResult(++seq, id, ok, output, truncated))));
