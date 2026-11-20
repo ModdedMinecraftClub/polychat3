@@ -1,11 +1,15 @@
 package club.moddedminecraft.polychat3.server.config;
 
+import java.util.Collections;
+import java.util.List;
+
 public class Config {
 
 
     //These match the exact names in the jsonc config
     private String server_token;
     private int server_port;
+    private List<String> modules;
 
 
     public String getToken() {
@@ -13,6 +17,14 @@ public class Config {
     }
     public int getPort() {
         return server_port;
+    }
+
+    /** The modules to enable, in order; none if the key is missing, as in a config file from before modules. */
+    public List<String> getModules() {
+        if (modules == null) {
+            return Collections.emptyList();
+        }
+        return modules;
     }
 
     /**

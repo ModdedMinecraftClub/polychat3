@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -28,6 +29,7 @@ import club.moddedminecraft.polychat3.core.payloads.s2c.S2CHandshakeAccepted;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMute;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CRelayed;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CSystemMessage;
 import club.moddedminecraft.polychat3.server.net.Connection;
 
 /**
@@ -126,6 +128,27 @@ public final class Hub {
                 }
             }
         }));
+    }
+
+    /**
+     * Sends a systemMessage to every connected game server, for a module. Safe from any thread: it only posts to the
+     * hub thread.
+     */
+    public void systemMessage(String message, S2CSystemMessage.Kind kind) {
+        thread.execute(logged(() -> {
+            S2CSystemMessage frame = new S2CSystemMessage(message, kind);
+            broadcast(frame, null);
+        }));
+    }
+
+    /**
+     * Runs a module's task on the hub thread every period, the first time one period from now. An exception is logged
+     * and the task keeps running.
+     *
+     * @return the task's handle; its cancel(false) stops it.
+     */
+    public ScheduledFuture<?> every(long period, TimeUnit unit, Runnable task) {
+        return thread.scheduleAtFixedRate(logged(task), period, period, unit);
     }
 
     /** Sends a protocolError saying why, then closes with closeCode. */

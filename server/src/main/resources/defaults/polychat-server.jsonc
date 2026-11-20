@@ -2,5 +2,7 @@
     //The token every game server uses to connect to the polychat server; must be set
     "server_token" : "",
     //The port the polychat server listens on
-    "server_port" : 5005
+    "server_port" : 5005,
+    //The modules to switch on, in order, for example ["broadcasts", "console"]
+    "modules": []
 }
