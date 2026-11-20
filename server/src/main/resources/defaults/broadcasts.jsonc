@@ -1,0 +1,9 @@
+{
+    //Minutes between two broadcasts, and until the first; at least 1
+    "interval_minutes" : 7,
+    //Sent to every game server in turn, one per interval, then from the first again
+    "messages" : [
+        "Join our Discord: discord.gg/mmcc",
+        "Vote for the server to earn rewards"
+    ]
+}
