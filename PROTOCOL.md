@@ -155,7 +155,8 @@ and otherwise ignores a `serverStatus` with one.
   - `serverStatus` is the origin's `S2CServerEntry` flattened onto the frame.
 - `runCommand`: the client joins `args` with single spaces and substitutes the
   result for `$args` once, in its own override for `name` if it has one, else in
-  `default` (`defaultCommand` in Java). It runs that console command and answers
+  `default` (`defaultCommand` in Java), and trims spaces from both ends, so
+  empty `args` leave no trailing space. It runs that console command and answers
   with `commandResult`.
 - `systemMessage`: `kind` is `broadcast`, `restart` or `info`. The hub only sends
   it to the servers it is meant for.

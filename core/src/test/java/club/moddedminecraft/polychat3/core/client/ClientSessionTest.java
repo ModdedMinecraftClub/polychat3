@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -27,6 +28,7 @@ import club.moddedminecraft.polychat3.core.payloads.PlayerInfo;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolError;
 import club.moddedminecraft.polychat3.core.payloads.ProtocolException;
 import club.moddedminecraft.polychat3.core.payloads.ServerState;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SCommandResult;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SEvent;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SHandshake;
 import club.moddedminecraft.polychat3.core.payloads.c2s.C2SPlayerList;
@@ -172,7 +174,7 @@ class ClientSessionTest {
         accept();
         session.chatMessage("Alex", "ec561538-f3fd-461d-aff5-086b22154bce", "hi");
         session.playerJoin("Bob", "b0b0b0b0-0000-0000-0000-000000000000", 2);
-        session.commandResult("c1", true, "done", false);
+        session.commandResult("c1", true, "done");
         session.serverStatus(ServerState.STARTED);
         sync();
         assertEquals(Arrays.asList("playerList 1", "chatMessage 2", "playerJoin 3", "commandResult 4", "serverStatus 5"),
@@ -230,10 +232,59 @@ class ClientSessionTest {
     @Test
     void commandResultAndPlayerListAreNotResent() throws Exception {
         accept();
-        session.commandResult("c1", true, "done", false);
+        session.commandResult("c1", true, "done");
         chats(1);
         reconnect(1);
         assertEquals(Arrays.asList("chatMessage 3", "playerList 4"), eventsSent());
+    }
+
+    @Test
+    void commandResultSendsShortOutputWhole() throws Exception {
+        accept();
+        session.commandResult("c1", true, "Overall: Mean TPS: 20.0");
+        C2SCommandResult result = lastCommandResult();
+        assertEquals("c1", result.getId());
+        assertTrue(result.isOk());
+        assertEquals("Overall: Mean TPS: 20.0", result.getOutput());
+        assertFalse(result.isTruncated());
+    }
+
+    /** Go!Agnostic may give no message; a null output would make the frame invalid. */
+    @Test
+    void commandResultSendsNullOutputAsEmpty() throws Exception {
+        accept();
+        session.commandResult("c1", false, null);
+        assertEquals("", lastCommandResult().getOutput());
+    }
+
+    @Test
+    void commandResultCutsLongOutput() throws Exception {
+        accept();
+        session.commandResult("c1", true, repeat('a', ClientSession.MAX_OUTPUT_CHARS + 10));
+        C2SCommandResult result = lastCommandResult();
+        assertEquals(ClientSession.MAX_OUTPUT_CHARS, result.getOutput().length());
+        assertTrue(result.isTruncated());
+    }
+
+    /** The worst case: every character a control character, which Gson writes as 6 bytes. */
+    @Test
+    void commandResultFitsTheFrameLimit() throws Exception {
+        accept();
+        session.commandResult("c1", true, repeat('\u0001', ClientSession.MAX_OUTPUT_CHARS + 1));
+        sync();
+        String frame = transport.sent.get(transport.sent.size() - 1);
+        assertTrue(frame.getBytes(StandardCharsets.UTF_8).length <= Protocol.MAX_FRAME_BYTES);
+    }
+
+    /** An emoji is two chars; a cut between them would leave half a character. */
+    @Test
+    void commandResultDoesNotSplitASurrogatePair() throws Exception {
+        accept();
+        String output = repeat('a', ClientSession.MAX_OUTPUT_CHARS - 1) + "\uD83D\uDE00" + "b";
+        session.commandResult("c1", true, output);
+        C2SCommandResult result = lastCommandResult();
+        assertEquals(repeat('a', ClientSession.MAX_OUTPUT_CHARS - 1), result.getOutput());
+        assertTrue(result.isTruncated());
     }
 
     /** Events made before the first handshakeAccepted wait; past 200 the oldest is dropped. */
@@ -512,6 +563,18 @@ class ClientSessionTest {
     }
 
     /** Every event sent so far, as "type seq", leaving out the handshake. */
+    private C2SCommandResult lastCommandResult() throws Exception {
+        sync();
+        return assertInstanceOf(C2SCommandResult.class,
+                PayloadCodec.C2S.decode(transport.sent.get(transport.sent.size() - 1)));
+    }
+
+    private static String repeat(char c, int count) {
+        char[] chars = new char[count];
+        Arrays.fill(chars, c);
+        return new String(chars);
+    }
+
     private List<String> eventsSent() throws Exception {
         sync();
         List<String> events = new ArrayList<>();

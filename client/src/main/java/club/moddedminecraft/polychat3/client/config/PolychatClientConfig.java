@@ -1,5 +1,7 @@
 package club.moddedminecraft.polychat3.client.config;
 
+import java.util.Map;
+
 import club.moddedminecraft.polychat3.core.Protocol;
 
 import computer.heather.goagnostic.api.util.chat.ChatSymbols.Colour;
@@ -16,6 +18,7 @@ public class PolychatClientConfig {
     private String serverAddress;
     private int serverPort;
     private String token;
+    private Map<String, String> commands;
 
 
 
@@ -45,6 +48,10 @@ public class PolychatClientConfig {
         return token;
     }
 
+    /** This server's own console command for a hub command name, or null to use the hub's default. */
+    public String getCommand(String name) {
+        return commands == null ? null : commands.get(name);
+    }
 
     public void validate() {
         //Validate everything

@@ -77,6 +77,11 @@ public final class ClientSession {
     // Events the hub hasn't acknowledged yet, oldest first, as in PROTOCOL.md "Sequence numbers, acknowledgements
     // and replay". The oldest is dropped past MAX_UNACKED
     private static final int MAX_UNACKED = 200;
+    /**
+     * Most characters of commandResult output sent. Gson writes at most 6 bytes for one character (a control character
+     * as \u0001), so this keeps the frame under Protocol.MAX_FRAME_BYTES with 4 KiB to spare for the other fields.
+     */
+    static final int MAX_OUTPUT_CHARS = (Protocol.MAX_FRAME_BYTES - 4096) / 6;
     private final ArrayDeque<C2SEvent> unacked = new ArrayDeque<>();
     // The seq of the last event built, 0 before the first
     private long seq;
@@ -266,9 +271,19 @@ public final class ClientSession {
         thread.execute(logged(() -> send(new C2SPlayerList(++seq, players.get()))));
     }
 
-    /** The answer to a {@code runCommand}. Never buffered, as PROTOCOL.md says. */
-    public void commandResult(String id, boolean ok, String output, boolean truncated) {
-        thread.execute(logged(() -> send(new C2SCommandResult(++seq, id, ok, output, truncated))));
+    /**
+     * The answer to a {@code runCommand}. Cuts {@code output} to {@link #MAX_OUTPUT_CHARS} and sets {@code truncated},
+     * as PROTOCOL.md says. Never buffered.
+     */
+    public void commandResult(String id, boolean ok, String output) {
+        String text = output != null ? output : "";
+        boolean truncated = text.length() > MAX_OUTPUT_CHARS;
+        int end = MAX_OUTPUT_CHARS;
+        if (truncated && Character.isHighSurrogate(text.charAt(end - 1))) {
+            end--;
+        }
+        String cut = truncated ? text.substring(0, end) : text;
+        thread.execute(logged(() -> send(new C2SCommandResult(++seq, id, ok, cut, truncated))));
     }
 
     /** Staff on this server muted or unmuted a player. */

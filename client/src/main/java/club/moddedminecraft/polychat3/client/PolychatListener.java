@@ -11,11 +11,13 @@ import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMute;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerJoin;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerLeave;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CRunCommand;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerEntry;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerStatus;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CSystemMessage;
 
 import computer.heather.goagnostic.api.baseclasses.GoAgnosticMod;
+import computer.heather.goagnostic.api.command.CommandResult;
 
 /**
  * What the hub sends, handed on to the game, and the session's warnings and errors, sent to the mod's log. Called on
@@ -96,6 +98,24 @@ final class PolychatListener implements MessageListener {
     @Override
     public void mute(S2CMute message) {
         mutes.set(message.getTarget(), message.isMuted());
+    }
+
+    @Override
+    public void runCommand(S2CRunCommand message) {
+        String command = message.commandLine(PolychatClient.CONFIG.getCommand(message.getName()));
+        logger.info("Running " + command + " for the hub");
+        gameThread.post(() -> {
+            try {
+                CommandResult result = PolychatClient.instance().getServer().executeCommand(command);
+                PolychatClient.instance().session().commandResult(message.getId(),
+                        Boolean.TRUE.equals(result.getSuccess()), result.getMessage());
+            } catch (RuntimeException e) {
+                // Still answer, so the hub isn't left waiting for this id
+                logger.warn("Command " + command + " for the hub failed: " + e);
+                PolychatClient.instance().session().commandResult(message.getId(), false, e.toString());
+            }
+        });
+
     }
 
     /** The colour for a server id; blue for one the hub never listed, such as Discord's, as polychat2 showed it. */

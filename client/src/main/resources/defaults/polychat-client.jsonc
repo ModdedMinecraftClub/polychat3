@@ -17,7 +17,11 @@
     "serverPort" : 5005,
 
     //The token used to connect to the Polychat3 server/hub
-    "token" : ""
+    "token" : "",
 
+    //This server's own console command for a hub command name, instead of the hub's default.
+    //$args is replaced by the command's arguments. For example, on NeoForge:
+    //"commands" : { "tps" : "neoforge tps $args" }
+    "commands" : {}
 
 }
