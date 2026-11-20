@@ -39,7 +39,8 @@ public final class S2CMute extends Payload {
     }
 
     /**
-     * @return who did it: a Minecraft UUID for an in-game mute, a Discord user id for a Discord one.
+     * @return who did it: a Minecraft UUID for an in-game mute, {@code console} for one from a server console, a
+     *         Discord user id for a Discord one.
      */
     public String getBy() {
         return by;

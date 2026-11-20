@@ -7,6 +7,8 @@ import java.util.Map;
 import club.moddedminecraft.polychat3.core.client.MessageListener;
 import club.moddedminecraft.polychat3.core.payloads.ServerState;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CChatMessage;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMute;
+import club.moddedminecraft.polychat3.core.payloads.s2c.S2CMuteList;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerJoin;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CPlayerLeave;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerEntry;
@@ -14,7 +16,6 @@ import club.moddedminecraft.polychat3.core.payloads.s2c.S2CServerStatus;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CSystemMessage;
 
 import computer.heather.goagnostic.api.baseclasses.GoAgnosticMod;
-import computer.heather.goagnostic.api.util.chat.ChatManager;
 
 /**
  * What the hub sends, handed on to the game, and the session's warnings and errors, sent to the mod's log. Called on
@@ -27,10 +28,16 @@ final class PolychatListener implements MessageListener {
     private final Map<String, String> colours = new HashMap<>();
     /** Each other server's last state, by id, so a reconnect that changes nothing shows no line. Session thread only. */
     private final Map<String, ServerState> states = new HashMap<>();
+    /** The mute list the hub sends, shared with PolychatClient.onChat. Written here, on the session thread. */
+    private final MuteList mutes;
+    /** Who sees Polychat lines. Used inside the tasks show posts, so on the game thread only. */
+    private final Audience audience;
 
-    public PolychatListener(GoAgnosticMod.Logger logger, GameThread gameThread) {
+    public PolychatListener(GoAgnosticMod.Logger logger, GameThread gameThread, MuteList mutes, Audience audience) {
         this.logger = logger;
         this.gameThread = gameThread;
+        this.mutes = mutes;
+        this.audience = audience;
     }
 
     @Override
@@ -81,13 +88,27 @@ final class PolychatListener implements MessageListener {
         show(message.getMessage());
     }
 
+    @Override
+    public void muteList(S2CMuteList message) {
+        mutes.replace(message.getMuted());
+    }
+
+    @Override
+    public void mute(S2CMute message) {
+        mutes.set(message.getTarget(), message.isMuted());
+    }
+
     /** The colour for a server id; blue for one the hub never listed, such as Discord's, as polychat2 showed it. */
     private String colour(String server) {
         return colours.getOrDefault(server, "blue");
     }
 
-    /** Shows a line to every player, on the game thread at the next tick: only that thread may touch the game. */
+    /**
+     * Shows a line to every player who hasn't silenced Polychat, on the game thread at the next tick: only that
+     * thread may touch the game.
+     */
     private void show(String line) {
-        gameThread.post(() -> ChatManager.sendSystemMessage(line));
+        gameThread.post(() -> audience.show(line));
     }
+
 }

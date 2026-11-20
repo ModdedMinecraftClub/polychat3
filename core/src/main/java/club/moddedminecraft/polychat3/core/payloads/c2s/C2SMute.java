@@ -37,7 +37,8 @@ public final class C2SMute extends C2SEvent {
     }
 
     /**
-     * @return Minecraft UUID of the staff member who did it, for the hub's log.
+     * @return Minecraft UUID of the staff member who did it, or {@code console} for the server console, for the
+     *         hub's log.
      */
     public String getBy() {
         return by;

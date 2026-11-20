@@ -31,6 +31,10 @@ public class PolychatClient extends GoAgnosticMod{
     private ClientSession session;
     /** Who is online, by UUID. The game thread changes it; the session's thread copies it for playerList. */
     private final Map<String, PlayerInfo> players = new ConcurrentHashMap<>();
+    /** The hub's mute list. PolychatListener fills it on the session thread; onChat reads it on the game thread. */
+    private final MuteList mutes = new MuteList();
+    /** Who sees Polychat lines, shared by PolychatListener and /polychat silence. Game thread only. */
+    private final Audience audience = new Audience();
     /**
      * Set by onServerStopping, so the shutdown hook can tell a stop from a crash, as polychat2 did. Volatile because
      * the hook's thread reads what the game thread wrote.
@@ -66,8 +70,9 @@ public class PolychatClient extends GoAgnosticMod{
 
         gameThread = new GameThread(logger);
         session = new ClientSession(CONFIG.getServerId(), CONFIG.getName(), CONFIG.getToken(), colour,
-                CONFIG.getAddress(), CONFIG.getMaxPlayers(), transport, new PolychatListener(logger, gameThread),
-                        () -> new ArrayList<>(players.values()));
+                CONFIG.getAddress(), CONFIG.getMaxPlayers(), transport,
+                new PolychatListener(logger, gameThread, mutes, audience),
+                () -> new ArrayList<>(players.values()));
 
         // The transport and the session each need the other, so the session goes in after both exist
         transport.setSession(session);
@@ -124,9 +129,32 @@ public class PolychatClient extends GoAgnosticMod{
     /** A player on this server chatted. Go!Agnostic's ChatManager calls it on the game thread. */
     public void onChat(ChatMessage message) {
         Player sender = message.getSender();
+        if (mutes.isMuted(sender.getUUID())) {
+            message.blockMessage();
+            sender.sendMessage("You are muted.");
+            return;
+        }
         session.chatMessage(sender.getName(), sender.getUUID(), message.getText());
     }
 
+    /** The one PolychatClient, for the command classes, which are static and have no instance of their own. */
+    static PolychatClient instance() {
+        return (PolychatClient) getInstance();
+    }
+
+    /** The connection to the hub, so commands can send to it. */
+    ClientSession session() {
+        return session;
+    }
+
+    /** The mute list, so commands can check whether a player is already muted. */
+    MuteList mutes() {
+        return mutes;
+    }
+
+    Audience audience() {
+        return audience;
+    }
 
     
 }

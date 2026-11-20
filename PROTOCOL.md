@@ -121,8 +121,8 @@ and otherwise ignores a `serverStatus` with one.
   5 minutes.
 - `commandResult`: `id` is the `id` of the `runCommand` it answers.
 - `mute`: a staff member on this server muted (`muted: true`) or unmuted the
-  player with Minecraft UUID `target`. `by` is the staff member's UUID. See
-  "Mutes".
+  player with Minecraft UUID `target`. `by` is the staff member's UUID, or
+  `console` when the server console (or RCON) did it. See "Mutes".
 
 ## Messages, hub to client (`s2c`)
 
@@ -162,7 +162,8 @@ and otherwise ignores a `serverStatus` with one.
 - `muteList`: every muted player's Minecraft UUID, sent right after
   `handshakeAccepted`. It replaces the client's copy of the list.
 - `mute`: one player was muted or unmuted, sent to every server. `by` is a
-  Minecraft UUID for an in-game mute, or the Discord user id for a Discord one.
+  Minecraft UUID for an in-game mute, `console` for one from a server console,
+  or the Discord user id for a Discord one.
   Not relayed with `seq` and never replayed: the next `muteList` carries it.
 
 ## Mutes
