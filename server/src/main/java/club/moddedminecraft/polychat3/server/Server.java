@@ -27,7 +27,8 @@ public class Server {
 
         Hub hub;
         try {
-            hub = new Hub(config.getToken(), Paths.get("config/polychat-mutes.json"));
+            hub = new Hub(config.getToken(), Paths.get("config/polychat-mutes.json"),
+                    config.getCommandTimeoutSeconds());
         } catch (IOException e) {
             // A broken mute list would be wiped by the next save, so don't start without it
             System.err.println("Can't load mutes: " + e.getMessage());

@@ -4,5 +4,7 @@
     //The port the polychat server listens on
     "server_port" : 5005,
     //The modules to switch on, in order, for example ["broadcasts", "console"]
-    "modules": []
+    "modules": [],
+    //How many seconds a game server has to answer a command before the polychat server gives up
+    "command_timeout_s" : 10
 }

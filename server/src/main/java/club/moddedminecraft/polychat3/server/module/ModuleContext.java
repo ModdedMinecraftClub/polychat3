@@ -2,10 +2,13 @@ package club.moddedminecraft.polychat3.server.module;
 
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import club.moddedminecraft.polychat3.core.config.ConfigLoader;
+import club.moddedminecraft.polychat3.core.payloads.c2s.C2SCommandResult;
 import club.moddedminecraft.polychat3.core.payloads.s2c.S2CSystemMessage;
 import club.moddedminecraft.polychat3.server.hub.Hub;
 
@@ -26,6 +29,17 @@ public final class ModuleContext {
     /** Sends a systemMessage to every connected game server. */
     public void systemMessage(String message, S2CSystemMessage.Kind kind) {
         hub.systemMessage(message, kind);
+    }
+
+    /**
+     * Runs a command on one game server.
+     *
+     * @return completed on the hub thread with the server's commandResult, or exceptionally with CommandFailed.
+     * @see Hub#runCommand
+     */
+    public CompletableFuture<C2SCommandResult> runCommand(String server, String name, String defaultCommand,
+            List<String> args) {
+        return hub.runCommand(server, name, defaultCommand, args);
     }
 
     /**
